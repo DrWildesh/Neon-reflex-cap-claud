@@ -1,0 +1,52 @@
+name: Scaffold Android Platform
+
+on:
+  workflow_dispatch:      # manual "Run workflow" button â€” trigger this once from the Actions tab
+
+permissions:
+  contents: write          # needed so the workflow can commit android/ back to the repo
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync web assets into native project
+        run: npx cap sync android
+
+      # TODO: replace this test AdMob App ID with your real one from the AdMob console
+      # (Apps â†’ your app â†’ App settings â†’ App ID). This must be the *App ID*
+      # (ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY), not an ad unit ID.
+      - name: Inject AdMob App ID into AndroidManifest.xml
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          ADMOB_APP_ID="ca-app-pub-3940256099942544~3347511713"
+          sed -i "s#<application#<application>\n        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"${ADMOB_APP_ID}\"/#" "$MANIFEST"
+          # undo the accidental split above and do a clean single-line insert instead:
+          python3 - "$MANIFEST" "$ADMOB_APP_ID" << 'EOF'
+          import sys, re
+          path, app_id = sys.argv[1], sys.argv[2]
+          xml = open(path).read()
+          if 'com.google.android.gms.ads.APPLICATION_ID' not in xml:
+              meta = f'    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="{app_id}"/>\n'
+              xml = re.sub(r'(<application[^>]*>)', r'\1\n' + meta, xml, count=1)
+              open(path, 'w').write(xml)
+          EOF
+          cat "$MANIFEST"
+
+      - name: Commit generated Android project
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: scaffold android platform + admob manifest config"
+          file_pattern: "android/**"
