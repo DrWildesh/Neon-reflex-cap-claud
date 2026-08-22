@@ -32,11 +32,15 @@ jobs:
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           ADMOB_APP_ID="ca-app-pub-3940256099942544~3347511713"
-          sed -i "s#<application#<application>\n        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"${ADMOB_APP_ID}\"/#" "$MANIFEST"
-          # undo the accidental split above and do a clean single-line insert instead:
+          
+          # Use Python directly to cleanly manipulate the file without risky sed operations
           python3 - "$MANIFEST" "$ADMOB_APP_ID" << 'EOF'
           import sys, re
-          path, app_id = sys.argv[1], sys.argv[2]
+          
+          # FIXED: Properly unpack separate elements from sys.argv
+          path = sys.argv[1]
+          app_id = sys.argv[2]
+          
           xml = open(path).read()
           if 'com.google.android.gms.ads.APPLICATION_ID' not in xml:
               meta = f'    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="{app_id}"/>\n'
@@ -44,6 +48,7 @@ jobs:
               open(path, 'w').write(xml)
           EOF
           cat "$MANIFEST"
+
 
       - name: Commit generated Android project
         uses: stefanzweifel/git-auto-commit-action@v5
