@@ -1,11 +1,21 @@
-    steps:
+name: Scaffold Android Platform
+
+on:
+  workflow_dispatch:      # manual "Run workflow" button from the Actions tab
+
+permissions:
+  contents: write          # needed so the workflow can commit android/ back to the repo
+
+jobs:
+  scaffold-job:            # Added job declaration
+    runs-on: ubuntu-latest # Added execution environment
+    steps:                 # Steps are now correctly nested
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # NEW: Force-delete any existing android directory left behind by prior runs
       - name: Force clean old Android structure
         run: rm -rf android
 
@@ -23,7 +33,6 @@
           MANIFEST=android/app/src/main/AndroidManifest.xml
           ADMOB_APP_ID="ca-app-pub-3940256099942544~3347511713"
           
-          # Clean python injection block with fixed unpacking variables
           python3 - "$MANIFEST" "$ADMOB_APP_ID" << 'EOF'
           import sys, re
           path = sys.argv[1]
