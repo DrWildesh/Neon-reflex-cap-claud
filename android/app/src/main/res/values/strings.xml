@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Neon Reflex</string>
+    <string name="title_activity_main">Neon Reflex</string>
+    <string name="package_name">com.neonstudio.reflex</string>
+    <string name="custom_url_scheme">com.neonstudio.reflex</string>
+</resources>
