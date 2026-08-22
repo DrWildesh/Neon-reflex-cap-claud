@@ -286,6 +286,17 @@
 </style>
 </head>
 <body>
+  <!-- Paste this inside your index.html file -->
+<div style="text-align: center; margin-top: 50px; z-index: 9999; position: relative;">
+  <button id="testInterstitialBtn" style="padding: 15px; margin: 10px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 5px;">
+    Show Interstitial Ad
+  </button>
+  
+  <button id="testRewardedBtn" style="padding: 15px; margin: 10px; font-size: 16px; background: #28a745; color: white; border: none; border-radius: 5px;">
+    Show Rewarded Ad
+  </button>
+</div>
+
 <div id="app">
 
   <header class="hud">
@@ -458,17 +469,55 @@
 };
 
 // ==========================================
-// CRITICAL TRIGGER BLOCK (DO NOT REMOVE)
+// UPDATED RUNNER BLOCK WITH BUTTON ACTIONS
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
   // Give your physical phone hardware 3 seconds to safely wake up Capacitor
   setTimeout(async () => {
-    // This executes your banner setup sequence automatically
+    // 1. Initialize and show the bottom banner automatically
     await AdManager.initBannerAd();
-    // This pre-loads your interstitial in the background
+    
+    // 2. Pre-load your interstitial in the background
     await AdManager.preloadInterstitial();
   }, 3000);
+
+  // 3. LISTEN FOR INTERSTITIAL BUTTON TAP
+  const intBtn = document.getElementById('testInterstitialBtn');
+  if (intBtn) {
+    intBtn.addEventListener('click', () => {
+      console.log('[AdManager] Interstitial button clicked.');
+      
+      // Call the show function, and tell it what to do after the user closes the ad
+      AdManager.showInterstitial(async () => {
+        console.log('User closed the interstitial ad! Resuming game logic here.');
+        
+        // CRITICAL: Always reload a new interstitial immediately so it's ready for the next click
+        await AdManager.preloadInterstitial();
+      });
+    });
+  }
+
+  // 4. LISTEN FOR REWARDED BUTTON TAP
+  const rewBtn = document.getElementById('testRewardedBtn');
+  if (rewBtn) {
+    rewBtn.addEventListener('click', () => {
+      console.log('[AdManager] Rewarded button clicked.');
+      
+      // Call the rewarded function, passing a success handler and a failure handler
+      AdManager.showRewardedAd(
+        () => {
+          // This code runs ONLY if the user watched the whole video
+          alert('Success! You watched the ad. Giving you 100 free coins!');
+        },
+        () => {
+          // This code runs if the ad crashed or the user skipped early
+          alert('Failed to show rewarded ad or user closed it early.');
+        }
+      );
+    });
+  }
 });
+
 
 
   /* =====================================================================
