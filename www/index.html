@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Neon Reflex — Puzzle Clicker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060f;
+    --bg-1:#0a0e1f;
+    --neon-cyan:#00f6ff;
+    --neon-pink:#ff2bd6;
+    --neon-purple:#8b5cf6;
+    --neon-gold:#ffd23f;
+    --neon-red:#ff3b5c;
+    --neon-green:#39ff9b;
+    --panel:#0d1224;
+    --panel-border:rgba(0,246,255,0.25);
+    --text-dim:#8891b0;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{
+    height:100%;
+    margin:0;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(139,92,246,0.18), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(0,246,255,0.14), transparent 45%),
+      var(--bg-0);
+    font-family:'Rajdhani', sans-serif;
+    color:#eaf0ff;
+    overflow:hidden;
+    touch-action:manipulation;
+  }
+  #app{
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    max-width:520px;
+    margin:0 auto;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    position:relative;
+  }
+
+  /* ---------- HEADER / HUD ---------- */
+  header.hud{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+    padding:10px 14px;
+    background:linear-gradient(180deg, var(--panel), rgba(13,18,36,0.6));
+    border:1px solid var(--panel-border);
+    border-radius:16px;
+    box-shadow:0 0 24px rgba(0,246,255,0.08), inset 0 0 20px rgba(0,0,0,0.4);
+    margin-bottom:10px;
+    flex-wrap:wrap;
+  }
+  .hud-block{ text-align:center; min-width:64px; }
+  .hud-label{ font-size:10px; letter-spacing:2px; color:var(--text-dim); text-transform:uppercase; }
+  .hud-value{
+    font-family:'Orbitron', sans-serif;
+    font-size:20px;
+    font-weight:700;
+  }
+  #score-val{ color:var(--neon-cyan); text-shadow:0 0 10px var(--neon-cyan), 0 0 20px rgba(0,246,255,0.5); }
+  #high-val{ color:var(--neon-gold); text-shadow:0 0 10px var(--neon-gold); }
+  #level-val{ color:var(--neon-purple); text-shadow:0 0 10px var(--neon-purple); }
+  #combo-val{ color:var(--neon-pink); text-shadow:0 0 10px var(--neon-pink); }
+
+  .lives{ display:flex; gap:4px; justify-content:center; margin-top:2px; }
+  .life-dot{
+    width:10px; height:10px; border-radius:50%;
+    background:var(--neon-red);
+    box-shadow:0 0 8px var(--neon-red);
+    transition:all .3s ease;
+  }
+  .life-dot.lost{ background:#222; box-shadow:none; transform:scale(0.6); opacity:.3; }
+
+  /* ---------- AD BANNER PLACEHOLDER (TOP) ---------- */
+  #ad-banner-container{
+    width:100%;
+    min-height:50px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:repeating-linear-gradient(45deg, #0c0f1c, #0c0f1c 10px, #10162b 10px, #10162b 20px);
+    border:1px dashed rgba(255,255,255,0.15);
+    border-radius:10px;
+    color:var(--text-dim);
+    font-size:11px;
+    letter-spacing:1px;
+    margin-bottom:10px;
+    flex-shrink:0;
+  }
+
+  /* ---------- GAME GRID ---------- */
+  main{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    min-height:0;
+  }
+  #grid{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:10px;
+    width:100%;
+    max-width:440px;
+    aspect-ratio:1/1;
+  }
+  .cell{
+    position:relative;
+    border-radius:16px;
+    background:linear-gradient(145deg, #0e1326, #0a0e1d);
+    border:1px solid rgba(255,255,255,0.06);
+    box-shadow:inset 0 0 10px rgba(0,0,0,0.6);
+    cursor:pointer;
+    overflow:hidden;
+    transition:transform .08s ease;
+  }
+  .cell:active{ transform:scale(0.94); }
+
+  .cell.lit-normal{
+    background:radial-gradient(circle, rgba(0,246,255,0.35), rgba(0,246,255,0.05));
+    border:1px solid var(--neon-cyan);
+    box-shadow:0 0 18px var(--neon-cyan), inset 0 0 20px rgba(0,246,255,0.4);
+    animation:pulse-cyan .5s ease-in-out infinite alternate;
+  }
+  .cell.lit-gold{
+    background:radial-gradient(circle, rgba(255,210,63,0.4), rgba(255,210,63,0.05));
+    border:1px solid var(--neon-gold);
+    box-shadow:0 0 22px var(--neon-gold), inset 0 0 22px rgba(255,210,63,0.45);
+    animation:pulse-gold .35s ease-in-out infinite alternate;
+  }
+  .cell.lit-bomb{
+    background:radial-gradient(circle, rgba(255,59,92,0.4), rgba(255,59,92,0.05));
+    border:1px solid var(--neon-red);
+    box-shadow:0 0 20px var(--neon-red), inset 0 0 20px rgba(255,59,92,0.4);
+    animation:pulse-red .4s ease-in-out infinite alternate;
+  }
+  @keyframes pulse-cyan{ from{filter:brightness(1);} to{filter:brightness(1.35);} }
+  @keyframes pulse-gold{ from{filter:brightness(1);} to{filter:brightness(1.45);} }
+  @keyframes pulse-red{ from{filter:brightness(1);} to{filter:brightness(1.3);} }
+
+  .cell .icon{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; opacity:0.9; pointer-events:none;
+  }
+
+  .cell-shrink{ animation:shrinkTimeout linear forwards; }
+  .cell-shrink::after{
+    content:'';
+    position:absolute; left:0; bottom:0; height:3px; width:100%;
+    background:currentColor;
+  }
+
+  /* floating score popup */
+  .pop{
+    position:absolute;
+    font-family:'Orbitron', sans-serif;
+    font-weight:700;
+    font-size:18px;
+    pointer-events:none;
+    animation:floatUp .7s ease-out forwards;
+    z-index:20;
+  }
+  @keyframes floatUp{
+    0%{ transform:translateY(0) scale(0.6); opacity:1; }
+    100%{ transform:translateY(-60px) scale(1.3); opacity:0; }
+  }
+
+  /* particle burst */
+  .particle{
+    position:absolute;
+    width:6px; height:6px;
+    border-radius:50%;
+    pointer-events:none;
+    z-index:19;
+    animation:particleOut .5s ease-out forwards;
+  }
+  @keyframes particleOut{
+    to{ transform:translate(var(--dx), var(--dy)) scale(0); opacity:0; }
+  }
+
+  /* ---------- OVERLAYS ---------- */
+  .overlay{
+    position:absolute; inset:0;
+    background:rgba(4,6,16,0.92);
+    backdrop-filter:blur(6px);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; text-align:center; padding:24px;
+    z-index:50;
+    border-radius:20px;
+  }
+  .overlay.hidden{ display:none; }
+  .title-glow{
+    font-family:'Orbitron', sans-serif;
+    font-size:34px;
+    font-weight:900;
+    letter-spacing:3px;
+    background:linear-gradient(90deg, var(--neon-cyan), var(--neon-pink), var(--neon-purple));
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+    filter:drop-shadow(0 0 18px rgba(0,246,255,0.5));
+    animation:hueShift 4s linear infinite;
+  }
+  @keyframes hueShift{ 0%{filter:hue-rotate(0deg) drop-shadow(0 0 18px rgba(0,246,255,0.5));} 100%{filter:hue-rotate(360deg) drop-shadow(0 0 18px rgba(0,246,255,0.5));} }
+
+  .sub{ color:var(--text-dim); font-size:14px; max-width:300px; line-height:1.5; }
+
+  .btn{
+    font-family:'Orbitron', sans-serif;
+    font-weight:700;
+    font-size:14px;
+    letter-spacing:1px;
+    padding:14px 28px;
+    border-radius:50px;
+    border:1px solid var(--neon-cyan);
+    background:rgba(0,246,255,0.08);
+    color:var(--neon-cyan);
+    box-shadow:0 0 16px rgba(0,246,255,0.35);
+    cursor:pointer;
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:active{ transform:scale(0.95); }
+  .btn.secondary{
+    border-color:var(--neon-purple);
+    color:var(--neon-purple);
+    background:rgba(139,92,246,0.08);
+    box-shadow:0 0 16px rgba(139,92,246,0.3);
+  }
+  .btn.gold{
+    border-color:var(--neon-gold);
+    color:var(--neon-gold);
+    background:rgba(255,210,63,0.08);
+    box-shadow:0 0 16px rgba(255,210,63,0.35);
+  }
+
+  .final-score{
+    font-family:'Orbitron', sans-serif;
+    font-size:46px;
+    font-weight:900;
+    color:var(--neon-cyan);
+    text-shadow:0 0 20px var(--neon-cyan);
+  }
+  .new-high{
+    color:var(--neon-gold);
+    font-size:13px;
+    letter-spacing:2px;
+    animation:blink 1s ease-in-out infinite;
+  }
+  @keyframes blink{ 50%{opacity:0.3;} }
+
+  #pause-btn{
+    position:absolute; top:10px; right:10px;
+    width:38px; height:38px;
+    border-radius:50%;
+    background:rgba(13,18,36,0.8);
+    border:1px solid var(--panel-border);
+    color:var(--text-dim);
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px;
+    z-index:40;
+    cursor:pointer;
+  }
+  #mute-btn{
+    position:absolute; top:10px; left:10px;
+    width:38px; height:38px;
+    border-radius:50%;
+    background:rgba(13,18,36,0.8);
+    border:1px solid var(--panel-border);
+    color:var(--neon-cyan);
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px;
+    z-index:40;
+    cursor:pointer;
+    transition:color .2s ease, border-color .2s ease;
+  }
+  #mute-btn.muted{ color:var(--text-dim); border-color:rgba(255,255,255,0.12); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="hud">
+    <div class="hud-block">
+      <div class="hud-label">Score</div>
+      <div class="hud-value" id="score-val">0</div>
+    </div>
+    <div class="hud-block">
+      <div class="hud-label">Best</div>
+      <div class="hud-value" id="high-val">0</div>
+    </div>
+    <div class="hud-block">
+      <div class="hud-label">Level</div>
+      <div class="hud-value" id="level-val">1</div>
+    </div>
+    <div class="hud-block">
+      <div class="hud-label">Combo</div>
+      <div class="hud-value" id="combo-val">x1</div>
+    </div>
+    <div class="hud-block">
+      <div class="hud-label">Lives</div>
+      <div class="lives" id="lives-row"></div>
+    </div>
+  </header>
+
+  <!-- =====================================================
+       ADMOB BANNER PLACEHOLDER
+       Paste your AdMob Banner Ad code integration here.
+       In an Android WebView wrapper, replace this div's
+       content by calling into your native bridge, e.g.:
+         AndroidAds.showBanner("ca-app-pub-xxxx/yyyy");
+       For a pure web/PWA build using Google Publisher Tags
+       or AdSense for a WebView shell, inject the ad script
+       here instead of this placeholder text.
+       ===================================================== -->
+ <main>
+    <div id="grid"></div>
+
+    <!-- START SCREEN -->
+    <div class="overlay" id="start-screen">
+      <div class="title-glow">NEON REFLEX</div>
+      <div class="sub">Tap the glowing cyan tiles before they fade. Grab GOLD for bonus points. Avoid RED bombs. Survive, combo, climb the levels.</div>
+      <button class="btn" id="start-btn">▶ START GAME</button>
+      <div class="sub" style="font-size:12px;">Best Score: <span id="start-high">0</span></div>
+    </div>
+
+    <!-- GAME OVER SCREEN -->
+    <div class="overlay hidden" id="gameover-screen">
+      <div class="title-glow" style="font-size:26px;">GAME OVER</div>
+      <div class="final-score" id="final-score">0</div>
+      <div class="new-high hidden" id="new-high-badge">🏆 NEW HIGH SCORE</div>
+
+      <!-- =====================================================
+           ADMOB REWARDED / INTERSTITIAL PLACEHOLDER (CONTINUE)
+           Optional: show a rewarded ad here to let the player
+           revive with 1 life instead of restarting.
+             function onWatchAdToContinue(){
+               // AndroidAds.showRewarded(); -> on reward callback,
+               // call reviveGame() from the native bridge.
+             }
+           ===================================================== -->
+      <button class="btn gold" id="revive-btn">🎬 WATCH AD TO CONTINUE</button>
+
+      <button class="btn" id="restart-btn">↻ PLAY AGAIN</button>
+    </div>
+
+    <!-- PAUSE SCREEN -->
+    <div class="overlay hidden" id="pause-screen">
+      <div class="title-glow" style="font-size:26px;">PAUSED</div>
+      <button class="btn" id="resume-btn">▶ RESUME</button>
+      <button class="btn secondary" id="quit-btn">⏹ QUIT TO MENU</button>
+    </div>
+
+    <button id="pause-btn">⏸</button>
+    <button id="mute-btn">🔊</button>
+  </main>
+
+  <!-- =====================================================
+       ADMOB BANNER PLACEHOLDER (BOTTOM, OPTIONAL)
+       Some layouts prefer a bottom-anchored banner instead.
+       Duplicate/adjust the top placeholder logic here if
+       your ad unit should live at the bottom of the screen.
+       ===================================================== -->
+  <div id="ad-banner-container-bottom" style="display:none;"></div>
+
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  /* =====================================================================
+   ADMOB INTEGRATION LAYER â€” wired to @capacitor-community/admob
+   ---------------------------------------------------------------------
+   Capacitor auto-injects `window.Capacitor` into the WebView at runtime
+   for native builds. No <script> tag or bundler/import is needed â€” the
+   plugin is reached via `Capacitor.Plugins.AdMob`, which is why this file
+   can stay a single plain HTML file with zero build step.
+   In a plain browser tab (no native shell), `Capacitor` is undefined, so
+   every call below safely no-ops instead of throwing.
+===================================================================== */
+const AdManager = {
+  _admob(){ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; },
+
+  async initBannerAd(){
+    const AdMob = this._admob();
+    if(!AdMob) { console.log('[AdManager] No native AdMob bridge â€” browser preview mode.'); return; }
+
+    // TODO: set initializeForTesting:false once you switch to real ad unit IDs.
+    await AdMob.initialize({ initializeForTesting: true });
+
+    await AdMob.showBanner({
+      adId: 'ca-app-pub-3940256099942544/6300978111', // TODO: paste your real Banner Ad Unit ID
+      adSize: 'ADAPTIVE_BANNER',
+      position: 'BOTTOM_CENTER',
+      margin: 0,
+      isTesting: true // TODO: set false for production
+    });
+  },
+
+  async preloadInterstitial(){
+    const AdMob = this._admob();
+    if(!AdMob) return;
+    try {
+      await AdMob.prepareInterstitial({
+        adId: 'ca-app-pub-3940256099942544/1033173712', // TODO: paste your real Interstitial Ad Unit ID
+        isTesting: true
+      });
+    } catch(e) { console.log('[AdManager] Interstitial preload failed:', e); }
+  },
+
+  async showInterstitial(onClosed){
+    const AdMob = this._admob();
+    if(!AdMob) { if(onClosed) onClosed(); return; }
+    try {
+      const sub = await AdMob.addListener('interstitialAdDismissed', () => {
+        sub.remove();
+        if(onClosed) onClosed();
+      });
+      await AdMob.showInterstitial();
+    } catch(e) {
+      console.log('[AdManager] Interstitial show failed:', e);
+      if(onClosed) onClosed();
+    }
+  },
+
+  async showRewardedAd(onReward, onFail){
+    const AdMob = this._admob();
+    if(!AdMob) { if(onReward) onReward(); return; } // browser fallback: auto-grant so local testing still works
+    try {
+      await AdMob.prepareRewardedAd({
+        adId: 'ca-app-pub-3940256099942544/5224354917', // TODO: paste your real Rewarded Ad Unit ID
+        isTesting: true
+      });
+      const sub = await AdMob.addListener('rewardedVideoAdReward', () => {
+        sub.remove();
+        onReward();
+      });
+      await AdMob.showRewardedAd();
+    } catch(e) {
+      console.log('[AdManager] Rewarded ad failed:', e);
+      if(onFail) onFail();
+    }
+  }
+};
+
+  /* =====================================================================
+     SOUND MANAGER — synthesized SFX + ambient background music
+     ---------------------------------------------------------------------
+     Everything here is generated live with the Web Audio API, so the game
+     needs zero external .mp3/.wav assets and just works the moment the
+     file is opened. If you'd rather ship real audio files (e.g. custom
+     SFX or a licensed music track) for a native Android build, swap the
+     bodies of playTone/playNoise and startMusic/stopMusic for an
+     <audio>/SoundPool-based implementation — the call sites below
+     (SFX.correct(), SFX.gold(), Music.start(), etc.) won't need to change.
+  ===================================================================== */
+  const Sound = (function(){
+    let ctx = null;
+    let master, musicGain, sfxGain;
+    let musicPlaying = false;
+    let musicTimer = null;
+    let muted = localStorage.getItem('neonReflex_muted') === '1';
+    let step = 0;
+
+    // Simple minor pentatonic-ish scale for the ambient pad (Hz).
+    const padScale = [130.81, 155.56, 174.61, 196.00, 233.08, 261.63];
+
+    function ensureCtx(){
+      if(ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return; // Web Audio unsupported — game still works, just silent.
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = muted ? 0 : 1;
+      master.connect(ctx.destination);
+
+      musicGain = ctx.createGain();
+      musicGain.gain.value = 0.16; // ambient pad stays subtle behind gameplay
+      musicGain.connect(master);
+
+      sfxGain = ctx.createGain();
+      sfxGain.gain.value = 0.35;
+      sfxGain.connect(master);
+    }
+
+    // Unlock/resume the AudioContext — must run inside a user-gesture handler (tap/click).
+    function unlock(){
+      ensureCtx();
+      if(ctx && ctx.state === 'suspended') ctx.resume();
+    }
+
+    function playTone(freq, {type='sine', duration=0.15, gain=1, when=0, glideTo=null, attack=0.01} = {}){
+      if(!ctx || muted) return;
+      const t0 = ctx.currentTime + when;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if(glideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(glideTo,1), t0 + duration);
+
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(gain, t0 + attack);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+
+      osc.connect(g).connect(sfxGain);
+      osc.start(t0);
+      osc.stop(t0 + duration + 0.05);
+    }
+
+    function playChord(freqs, opts){
+      freqs.forEach((f, i) => playTone(f, {...opts, when:(opts.when||0) + i*(opts.stagger||0.06)}));
+    }
+
+    // Short burst of white noise — used for the bomb "buzz" and soft click taps.
+    function playNoise({duration=0.12, gain=0.25, when=0, filterFreq=1800} = {}){
+      if(!ctx || muted) return;
+      const t0 = ctx.currentTime + when;
+      const bufferSize = Math.floor(ctx.sampleRate * duration);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for(let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferSize);
+
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = filterFreq;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(gain, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+
+      src.connect(filter).connect(g).connect(sfxGain);
+      src.start(t0);
+    }
+
+    /* ---------------- SFX presets, called directly from game events ---------------- */
+    const SFX = {
+      click(){ unlock(); playNoise({duration:0.05, gain:0.18, filterFreq:3000}); },
+      correct(combo){
+        unlock();
+        const pitch = 520 + Math.min(combo, 20) * 14; // pitch rises with combo streak
+        playTone(pitch, {type:'sine', duration:0.12, gain:0.5, glideTo:pitch*1.4});
+      },
+      gold(){
+        unlock();
+        playChord([660, 880, 1320], {type:'triangle', duration:0.35, gain:0.4, stagger:0.07});
+      },
+      bomb(){
+        unlock();
+        playTone(110, {type:'sawtooth', duration:0.3, gain:0.4, glideTo:40});
+        playNoise({duration:0.25, gain:0.3, filterFreq:900});
+      },
+      miss(){
+        unlock();
+        playTone(300, {type:'sine', duration:0.28, gain:0.35, glideTo:120});
+      },
+      levelUp(){
+        unlock();
+        playChord([392, 523.25, 659.25, 784], {type:'triangle', duration:0.3, gain:0.4, stagger:0.08});
+      },
+      gameOver(){
+        unlock();
+        playChord([392, 349.23, 293.66, 220], {type:'sawtooth', duration:0.5, gain:0.35, stagger:0.14});
+      },
+      revive(){
+        unlock();
+        playChord([440, 660, 880], {type:'sine', duration:0.3, gain:0.4, stagger:0.06});
+      }
+    };
+
+    /* ---------------- Ambient background music loop ---------------- */
+    function scheduleNextNote(tempoMs){
+      musicTimer = setTimeout(() => {
+        if(!musicPlaying) return;
+        const note = padScale[step % padScale.length];
+        step++;
+        if(ctx && !muted){
+          playTone(note, {type:'sine', duration:tempoMs/1000 * 1.6, gain:0.22, attack:0.4});
+          if(step % 4 === 0){
+            playTone(note/2, {type:'triangle', duration:tempoMs/1000 * 1.8, gain:0.12, attack:0.5});
+          }
+        }
+        scheduleNextNote(tempoMs);
+      }, tempoMs);
+    }
+
+    const Music = {
+      start(){
+        ensureCtx();
+        unlock();
+        if(musicPlaying) return;
+        musicPlaying = true;
+        step = 0;
+        scheduleNextNote(900);
+      },
+      stop(){
+        musicPlaying = false;
+        clearTimeout(musicTimer);
+      },
+      duck(){ if(musicGain) musicGain.gain.linearRampToValueAtTime(0.06, (ctx.currentTime||0) + 0.3); },
+      unduck(){ if(musicGain) musicGain.gain.linearRampToValueAtTime(0.16, (ctx.currentTime||0) + 0.3); }
+    };
+
+    function toggleMute(){
+      muted = !muted;
+      localStorage.setItem('neonReflex_muted', muted ? '1' : '0');
+      if(master) master.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.05);
+      return muted;
+    }
+
+    return { SFX, Music, unlock, toggleMute, isMuted:() => muted };
+  })();
+
+
+  /* =====================================================================
+     GAME CONFIG & STATE
+  ===================================================================== */
+  const GRID_SIZE = 16; // 4x4
+  const STORAGE_KEY = 'neonReflex_highScore';
+  const START_LIVES = 3;
+
+  const grid = document.getElementById('grid');
+  const scoreVal = document.getElementById('score-val');
+  const highVal = document.getElementById('high-val');
+  const levelVal = document.getElementById('level-val');
+  const comboVal = document.getElementById('combo-val');
+  const livesRow = document.getElementById('lives-row');
+
+  const startScreen = document.getElementById('start-screen');
+  const gameoverScreen = document.getElementById('gameover-screen');
+  const pauseScreen = document.getElementById('pause-screen');
+  const finalScoreEl = document.getElementById('final-score');
+  const newHighBadge = document.getElementById('new-high-badge');
+  const startHighEl = document.getElementById('start-high');
+
+  let state = {
+    score: 0,
+    highScore: parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10),
+    level: 1,
+    combo: 0,
+    lives: START_LIVES,
+    running: false,
+    paused: false,
+    spawnTimer: null,
+    activeCells: new Map(), // index -> {type, timeoutId}
+    correctInLevel: 0
+  };
+
+  // Build the grid cells once.
+  for(let i=0;i<GRID_SIZE;i++){
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.index = i;
+    cell.addEventListener('pointerdown', onCellTap, {passive:true});
+    grid.appendChild(cell);
+  }
+
+  highVal.textContent = state.highScore;
+  startHighEl.textContent = state.highScore;
+
+  /* =====================================================================
+     CORE GAME LOOP
+  ===================================================================== */
+  function startGame(){
+    Sound.unlock();
+    Sound.Music.start();
+    state.score = 0;
+    state.level = 1;
+    state.combo = 0;
+    state.lives = START_LIVES;
+    state.correctInLevel = 0;
+    state.running = true;
+    state.paused = false;
+    state.activeCells.forEach(v => clearTimeout(v.timeoutId));
+    state.activeCells.clear();
+
+    renderHUD();
+    renderLives();
+    clearAllCells();
+
+    startScreen.classList.add('hidden');
+    gameoverScreen.classList.add('hidden');
+    pauseScreen.classList.add('hidden');
+
+    scheduleSpawn();
+  }
+
+  function scheduleSpawn(){
+    if(!state.running || state.paused) return;
+    const interval = getSpawnInterval();
+    state.spawnTimer = setTimeout(() => {
+      spawnTarget();
+      scheduleSpawn();
+    }, interval);
+  }
+
+  function getSpawnInterval(){
+    // Gets faster as level increases, floors out for playability.
+    const base = 950;
+    const reduction = (state.level - 1) * 55;
+    return Math.max(340, base - reduction);
+  }
+
+  function getLiveDuration(){
+    const base = 1350;
+    const reduction = (state.level - 1) * 45;
+    return Math.max(520, base - reduction);
+  }
+
+  function spawnTarget(){
+    const freeCells = [];
+    grid.querySelectorAll('.cell').forEach(c => {
+      if(!state.activeCells.has(parseInt(c.dataset.index))) freeCells.push(c);
+    });
+    if(freeCells.length === 0) return;
+
+    const cell = freeCells[Math.floor(Math.random() * freeCells.length)];
+    const idx = parseInt(cell.dataset.index);
+
+    // Weighted random type: mostly normal, some gold, some bomb (bomb chance grows slightly with level).
+    const roll = Math.random();
+    let type = 'normal';
+    if(roll > 0.90) type = 'gold';
+    else if(roll > 0.78 && state.level > 1) type = 'bomb';
+
+    cell.classList.add(type === 'normal' ? 'lit-normal' : type === 'gold' ? 'lit-gold' : 'lit-bomb');
+    cell.innerHTML = `<div class="icon">${type === 'normal' ? '◆' : type === 'gold' ? '★' : '☠'}</div>`;
+
+    const duration = getLiveDuration();
+    cell.style.color = type === 'normal' ? 'var(--neon-cyan)' : type === 'gold' ? 'var(--neon-gold)' : 'var(--neon-red)';
+
+    const timeoutId = setTimeout(() => {
+      // Target expired.
+      if(type === 'normal') handleMiss(cell, idx);
+      else if(type === 'gold') { clearCell(cell, idx); } // gold missed = no penalty, just gone
+      else { clearCell(cell, idx); } // bomb expiring safely is fine, no penalty
+    }, duration);
+
+    state.activeCells.set(idx, {type, timeoutId});
+  }
+
+  function onCellTap(e){
+    if(!state.running || state.paused) return;
+    const cell = e.currentTarget;
+    const idx = parseInt(cell.dataset.index);
+    const data = state.activeCells.get(idx);
+
+    if(!data){
+      // Tapped an unlit cell — no penalty, keeps game forgiving/addictive.
+      return;
+    }
+
+    if(data.type === 'bomb'){
+      handleBombHit(cell, idx);
+    } else {
+      handleCorrectHit(cell, idx, data.type, e);
+    }
+  }
+
+  function handleCorrectHit(cell, idx, type, e){
+    clearTimeout(state.activeCells.get(idx).timeoutId);
+    state.activeCells.delete(idx);
+
+    state.combo += 1;
+    const comboMultiplier = 1 + Math.floor(state.combo / 5) * 0.5; // grows every 5-combo
+    const basePoints = type === 'gold' ? 30 : 10;
+    const gained = Math.round(basePoints * comboMultiplier);
+    state.score += gained;
+    state.correctInLevel += 1;
+
+    spawnPopup(cell, `+${gained}`, type === 'gold' ? 'var(--neon-gold)' : 'var(--neon-cyan)');
+    spawnParticles(cell, type === 'gold' ? 'var(--neon-gold)' : 'var(--neon-cyan)');
+
+    if(type === 'gold') Sound.SFX.gold(); else Sound.SFX.correct(state.combo);
+
+    clearCell(cell, idx);
+    const levelBefore = state.level;
+    maybeLevelUp();
+    if(state.level > levelBefore) Sound.SFX.levelUp();
+    renderHUD();
+  }
+
+  function handleMiss(cell, idx){
+    state.activeCells.delete(idx);
+    state.combo = 0;
+    clearCell(cell, idx);
+    Sound.SFX.miss();
+    renderHUD();
+    loseLife();
+  }
+
+  function handleBombHit(cell, idx){
+    clearTimeout(state.activeCells.get(idx).timeoutId);
+    state.activeCells.delete(idx);
+    state.combo = 0;
+    spawnPopup(cell, 'BOOM', 'var(--neon-red)');
+    spawnParticles(cell, 'var(--neon-red)');
+    Sound.SFX.bomb();
+    clearCell(cell, idx);
+    renderHUD();
+    loseLife();
+  }
+
+  function loseLife(){
+    state.lives -= 1;
+    renderLives();
+    if(state.lives <= 0){
+      endGame();
+    }
+  }
+
+  function maybeLevelUp(){
+    const needed = 8 + (state.level - 1) * 2;
+    if(state.correctInLevel >= needed){
+      state.level += 1;
+      state.correctInLevel = 0;
+    }
+  }
+
+  function clearCell(cell, idx){
+    cell.className = 'cell';
+    cell.innerHTML = '';
+    cell.style.color = '';
+  }
+
+  function clearAllCells(){
+    grid.querySelectorAll('.cell').forEach(c => { c.className = 'cell'; c.innerHTML=''; });
+  }
+
+  function endGame(){
+    state.running = false;
+    clearTimeout(state.spawnTimer);
+    state.activeCells.forEach(v => clearTimeout(v.timeoutId));
+    state.activeCells.clear();
+
+    Sound.SFX.gameOver();
+    Sound.Music.stop();
+
+    const isNewHigh = state.score > state.highScore;
+    if(isNewHigh){
+      state.highScore = state.score;
+      localStorage.setItem(STORAGE_KEY, String(state.highScore));
+    }
+
+    finalScoreEl.textContent = state.score;
+    newHighBadge.classList.toggle('hidden', !isNewHigh);
+    highVal.textContent = state.highScore;
+    startHighEl.textContent = state.highScore;
+
+    gameoverScreen.classList.remove('hidden');
+
+    // ---- AdMob interstitial hook: shown periodically on Game Over ----
+    gameOverCount += 1;
+    if(gameOverCount % GAME_OVER_AD_FREQUENCY === 0){
+      AdManager.showInterstitial(() => {
+        AdManager.preloadInterstitial(); // preload the next one
+      });
+    } else {
+      AdManager.preloadInterstitial();
+    }
+  }
+
+  function reviveGame(){
+    Sound.SFX.revive();
+    Sound.Music.start();
+    state.lives = 1;
+    state.running = true;
+    state.paused = false;
+    gameoverScreen.classList.add('hidden');
+    renderLives();
+    scheduleSpawn();
+  }
+
+  /* =====================================================================
+     RENDERING HELPERS
+  ===================================================================== */
+  function renderHUD(){
+    scoreVal.textContent = state.score;
+    levelVal.textContent = state.level;
+    const mult = 1 + Math.floor(state.combo / 5) * 0.5;
+    comboVal.textContent = 'x' + mult.toFixed(1).replace('.0','');
+  }
+
+  function renderLives(){
+    livesRow.innerHTML = '';
+    for(let i=0;i<START_LIVES;i++){
+      const dot = document.createElement('div');
+      dot.className = 'life-dot' + (i >= state.lives ? ' lost' : '');
+      livesRow.appendChild(dot);
+    }
+  }
+
+  function spawnPopup(cell, text, color){
+    const rect = cell.getBoundingClientRect();
+    const appRect = document.getElementById('app').getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.textContent = text;
+    pop.style.color = color;
+    pop.style.left = (rect.left - appRect.left + rect.width/2 - 20) + 'px';
+    pop.style.top = (rect.top - appRect.top + rect.height/2 - 10) + 'px';
+    document.getElementById('app').appendChild(pop);
+    setTimeout(() => pop.remove(), 700);
+  }
+
+  function spawnParticles(cell, color){
+    const rect = cell.getBoundingClientRect();
+    const appRect = document.getElementById('app').getBoundingClientRect();
+    const cx = rect.left - appRect.left + rect.width/2;
+    const cy = rect.top - appRect.top + rect.height/2;
+    for(let i=0;i<8;i++){
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.background = color;
+      p.style.left = cx + 'px';
+      p.style.top = cy + 'px';
+      const angle = (Math.PI*2/8) * i;
+      const dist = 40 + Math.random()*20;
+      p.style.setProperty('--dx', Math.cos(angle)*dist + 'px');
+      p.style.setProperty('--dy', Math.sin(angle)*dist + 'px');
+      document.getElementById('app').appendChild(p);
+      setTimeout(() => p.remove(), 500);
+    }
+  }
+
+  /* =====================================================================
+     PAUSE / RESUME / QUIT
+  ===================================================================== */
+  function pauseGame(){
+    if(!state.running) return;
+    state.paused = true;
+    clearTimeout(state.spawnTimer);
+    Sound.Music.duck();
+    pauseScreen.classList.remove('hidden');
+  }
+
+  function resumeGame(){
+    state.paused = false;
+    pauseScreen.classList.add('hidden');
+    Sound.Music.unduck();
+    scheduleSpawn();
+  }
+
+  function quitToMenu(){
+    state.running = false;
+    state.paused = false;
+    clearTimeout(state.spawnTimer);
+    state.activeCells.forEach(v => clearTimeout(v.timeoutId));
+    state.activeCells.clear();
+    clearAllCells();
+    Sound.Music.stop();
+    pauseScreen.classList.add('hidden');
+    gameoverScreen.classList.add('hidden');
+    startScreen.classList.remove('hidden');
+  }
+
+  /* =====================================================================
+     EVENT WIRING
+  ===================================================================== */
+  document.getElementById('start-btn').addEventListener('click', () => { Sound.SFX.click(); startGame(); });
+  document.getElementById('restart-btn').addEventListener('click', () => { Sound.SFX.click(); startGame(); });
+  document.getElementById('pause-btn').addEventListener('click', () => { Sound.SFX.click(); pauseGame(); });
+  document.getElementById('resume-btn').addEventListener('click', () => { Sound.SFX.click(); resumeGame(); });
+  document.getElementById('quit-btn').addEventListener('click', () => { Sound.SFX.click(); quitToMenu(); });
+
+  document.getElementById('revive-btn').addEventListener('click', () => {
+    Sound.SFX.click();
+    AdManager.showRewardedAd(
+      () => reviveGame(),                 // onReward
+      () => console.log('Ad failed/skipped, no revive granted.') // onFail
+    );
+  });
+
+  const muteBtn = document.getElementById('mute-btn');
+  function refreshMuteBtn(){
+    const isMuted = Sound.isMuted();
+    muteBtn.textContent = isMuted ? '🔇' : '🔊';
+    muteBtn.classList.toggle('muted', isMuted);
+  }
+  muteBtn.addEventListener('click', () => {
+    Sound.unlock();
+    Sound.toggleMute();
+    refreshMuteBtn();
+    if(!Sound.isMuted()) Sound.SFX.click();
+  });
+  refreshMuteBtn();
+
+})();
+</script>
+</body>
+</html>
