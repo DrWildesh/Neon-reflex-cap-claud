@@ -1,20 +1,13 @@
-name: Scaffold Android Platform
-
-on:
-  workflow_dispatch:      # manual "Run workflow" button â€” trigger this once from the Actions tab
-
-permissions:
-  contents: write          # needed so the workflow can commit android/ back to the repo
-
-jobs:
-  scaffold:
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      # NEW: Force-delete any existing android directory left behind by prior runs
+      - name: Force clean old Android structure
+        run: rm -rf android
 
       - name: Install dependencies
         run: npm install
@@ -25,19 +18,14 @@ jobs:
       - name: Sync web assets into native project
         run: npx cap sync android
 
-      # TODO: replace this test AdMob App ID with your real one from the AdMob console
-      # (Apps â†’ your app â†’ App settings â†’ App ID). This must be the *App ID*
-      # (ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY), not an ad unit ID.
       - name: Inject AdMob App ID into AndroidManifest.xml
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           ADMOB_APP_ID="ca-app-pub-3940256099942544~3347511713"
           
-          # Use Python directly to cleanly manipulate the file without risky sed operations
+          # Clean python injection block with fixed unpacking variables
           python3 - "$MANIFEST" "$ADMOB_APP_ID" << 'EOF'
           import sys, re
-          
-          # FIXED: Properly unpack separate elements from sys.argv
           path = sys.argv[1]
           app_id = sys.argv[2]
           
@@ -49,9 +37,8 @@ jobs:
           EOF
           cat "$MANIFEST"
 
-
       - name: Commit generated Android project
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: scaffold android platform + admob manifest config"
+          commit_message: "chore: fresh scaffold android platform + admob manifest config"
           file_pattern: "android/**"
