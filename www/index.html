@@ -387,17 +387,18 @@
    In a plain browser tab (no native shell), `Capacitor` is undefined, so
    every call below safely no-ops instead of throwing.
 ===================================================================== */
-const AdManager = {
+
+
+  const AdManager = {
   _admob(){ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; },
 
   async initBannerAd(){
     const AdMob = this._admob();
-    if(!AdMob) { console.log('[AdManager] No native AdMob bridge â€” browser preview mode.'); return; }
+    if(!AdMob) { console.log('[AdManager] No native AdMob bridge — browser preview mode.'); return; }
 
     // TODO: set initializeForTesting:false once you switch to real ad unit IDs.
     await AdMob.initialize({ 
       initializeForTesting: true,
-      // FIXED: Added your unique device ID string here (with dashes removed)
       testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
     });
 
@@ -405,7 +406,7 @@ const AdManager = {
       adId: 'ca-app-pub-3940256099942544/6300978111', // TODO: paste your real Banner Ad Unit ID
       adSize: 'ADAPTIVE_BANNER',
       position: 'BOTTOM_CENTER',
-      margin: 0,
+      margin: 20, // Added 20px margin so phone navigation keys don't block it
       isTesting: true // TODO: set false for production
     });
   },
@@ -455,6 +456,20 @@ const AdManager = {
     }
   }
 };
+
+// ==========================================
+// CRITICAL TRIGGER BLOCK (DO NOT REMOVE)
+// ==========================================
+window.addEventListener('DOMContentLoaded', () => {
+  // Give your physical phone hardware 3 seconds to safely wake up Capacitor
+  setTimeout(async () => {
+    // This executes your banner setup sequence automatically
+    await AdManager.initBannerAd();
+    // This pre-loads your interstitial in the background
+    await AdManager.preloadInterstitial();
+  }, 3000);
+});
+
 
   /* =====================================================================
      SOUND MANAGER — synthesized SFX + ambient background music
