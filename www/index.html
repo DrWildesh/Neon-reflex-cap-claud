@@ -405,20 +405,19 @@
 
   async initBannerAd(){
     const AdMob = this._admob();
-    if(!AdMob) { console.log('[AdManager] No native AdMob bridge — browser preview mode.'); return; }
+    if(!AdMob) return;
 
-    // TODO: set initializeForTesting:false once you switch to real ad unit IDs.
     await AdMob.initialize({ 
       initializeForTesting: true,
       testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
     });
 
     await AdMob.showBanner({
-      adId: 'ca-app-pub-3940256099942544/6300978111', // TODO: paste your real Banner Ad Unit ID
+      adId: 'ca-app-pub-3940256099942544/6300978111', 
       adSize: 'ADAPTIVE_BANNER',
       position: 'BOTTOM_CENTER',
-      margin: 20, // Added 20px margin so phone navigation keys don't block it
-      isTesting: true // TODO: set false for production
+      margin: 20, 
+      isTesting: true 
     });
   },
 
@@ -427,7 +426,7 @@
     if(!AdMob) return;
     try {
       await AdMob.prepareInterstitial({
-        adId: 'ca-app-pub-3940256099942544/1033173712', // TODO: paste your real Interstitial Ad Unit ID
+        adId: 'ca-app-pub-3940256099942544/1033173712', 
         isTesting: true
       });
     } catch(e) { console.log('[AdManager] Interstitial preload failed:', e); }
@@ -448,75 +447,89 @@
     }
   },
 
-  async showRewardedAd(onReward, onFail){
+  // FIXED: Cleaned up to match the high-performance background preloading style
+  async preloadRewardedAd(){
     const AdMob = this._admob();
-    if(!AdMob) { if(onReward) onReward(); return; } // browser fallback: auto-grant so local testing still works
+    if(!AdMob) return;
     try {
       await AdMob.prepareRewardedAd({
-        adId: 'ca-app-pub-3940256099942544/5224354917', // TODO: paste your real Rewarded Ad Unit ID
+        adId: 'ca-app-pub-3940256099942544/5224354917', // Google official rewarded test ID
         isTesting: true
       });
-      const sub = await AdMob.addListener('rewardedVideoAdReward', () => {
-        sub.remove();
-        onReward();
+      console.log('[AdManager] Rewarded ad preloaded in background.');
+    } catch(e) { console.log('[AdManager] Rewarded preload failed:', e); }
+  },
+
+  // FIXED: Removed the instant-run race condition
+  async showRewardedAd(onReward, onFail){
+    const AdMob = this._admob();
+    if(!AdMob) { if(onReward) onReward(); return; } 
+    try {
+      let rewardedGranted = false;
+
+      // 1. Setup the listener to capture when the user watches completely
+      const rewardSub = await AdMob.addListener('rewardedVideoAdReward', (reward) => {
+        console.log('[AdManager] Reward earned:', reward);
+        rewardedGranted = true; 
       });
+
+      // 2. Setup the listener to capture when the ad closes
+      const closeSub = await AdMob.addListener('rewardedVideoAdDismissed', () => {
+        rewardSub.remove();
+        closeSub.remove();
+        
+        if (rewardedGranted) {
+          if(onReward) onReward();
+        } else {
+          if(onFail) onFail();
+        }
+      });
+
+      // 3. Launch the presentation player safely
       await AdMob.showRewardedAd();
     } catch(e) {
-      console.log('[AdManager] Rewarded ad failed:', e);
+      console.log('[AdManager] Rewarded ad show execution failed:', e);
       if(onFail) onFail();
     }
   }
 };
 
 // ==========================================
-// UPDATED RUNNER BLOCK WITH BUTTON ACTIONS
+// RUNNER TRIGGER BLOCK WITH REWARD PRELOADING
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
-  // Give your physical phone hardware 3 seconds to safely wake up Capacitor
   setTimeout(async () => {
-    // 1. Initialize and show the bottom banner automatically
     await AdManager.initBannerAd();
-    
-    // 2. Pre-load your interstitial in the background
     await AdManager.preloadInterstitial();
+    await AdManager.preloadRewardedAd(); // NEW: Cache the video file on startup!
   }, 3000);
 
-  // 3. LISTEN FOR INTERSTITIAL BUTTON TAP
   const intBtn = document.getElementById('testInterstitialBtn');
   if (intBtn) {
     intBtn.addEventListener('click', () => {
-      console.log('[AdManager] Interstitial button clicked.');
-      
-      // Call the show function, and tell it what to do after the user closes the ad
       AdManager.showInterstitial(async () => {
-        console.log('User closed the interstitial ad! Resuming game logic here.');
-        
-        // CRITICAL: Always reload a new interstitial immediately so it's ready for the next click
         await AdManager.preloadInterstitial();
       });
     });
   }
 
-  // 4. LISTEN FOR REWARDED BUTTON TAP
   const rewBtn = document.getElementById('testRewardedBtn');
   if (rewBtn) {
     rewBtn.addEventListener('click', () => {
-      console.log('[AdManager] Rewarded button clicked.');
-      
-      // Call the rewarded function, passing a success handler and a failure handler
       AdManager.showRewardedAd(
-        () => {
-          // This code runs ONLY if the user watched the whole video
-          alert('Success! You watched the ad. Giving you 100 free coins!');
+        async () => {
+          alert('Success! You watched the video completely. Here is your reward!');
+          await AdManager.preloadRewardedAd(); // Preload next one immediately
         },
-        () => {
-          // This code runs if the ad crashed or the user skipped early
-          alert('Failed to show rewarded ad or user closed it early.');
+        async () => {
+          alert('Failed to show rewarded ad or you skipped out early.');
+          await AdManager.preloadRewardedAd(); // Reload a clean instance
         }
       );
     });
   }
 });
+
 
 
 
