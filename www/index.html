@@ -395,7 +395,11 @@ const AdManager = {
     if(!AdMob) { console.log('[AdManager] No native AdMob bridge â€” browser preview mode.'); return; }
 
     // TODO: set initializeForTesting:false once you switch to real ad unit IDs.
-    await AdMob.initialize({ initializeForTesting: true });
+    await AdMob.initialize({ 
+      initializeForTesting: true,
+      // FIXED: Added your unique device ID string here (with dashes removed)
+      testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
+    });
 
     await AdMob.showBanner({
       adId: 'ca-app-pub-3940256099942544/6300978111', // TODO: paste your real Banner Ad Unit ID
