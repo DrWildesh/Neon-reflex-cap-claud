@@ -25,23 +25,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm' # 🚀 Caches node_modules to speed up consecutive builds
 
-      - name: Setup Java Runtime environment
+      - name: Setup Java Runtime Environment
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
+          cache: 'gradle' # 🚀 Caches gradle packages to prevent long compile waits
 
       - name: Install Package Dependencies
         run: npm install
 
       - name: Generate App Icons & Splash Screen Assets
-        run: npx @capacitor/assets generate --android
+        run: npx @capacitor/assets generate --android --if-present
 
       - name: Build Standard Web Assets Layout
         run: npm run build --if-present
 
-      # 🌟 NEW FIX STEP: Dynamically changes minSdkVersion from 24 to 26 inside Gradle vars
+      # 🌟 REQUIRED FIX STEP: Modifies minSdkVersion from default to 26 in Gradle variables
       - name: Patch Native Android Build Variable Parameters
         run: |
           node -e "
@@ -57,11 +59,41 @@ jobs:
           }
           "
 
+      # 🛠️ MANIFEST PATCHING: Injects Cleartext support and sets up AdMob boilerplate IDs
       - name: Patch AndroidManifest XML Properties
-        run: node -e "const fs = require('fs'); const path = 'android/app/src/main/AndroidManifest.xml'; if (fs.existsSync(path)) { let m = fs.readFileSync(path, 'utf8'); if (!m.includes('android:usesCleartextTraffic')) { m = m.replace('<application', '<application android:usesCleartextTraffic=\"true\"'); } if (!m.includes('com.android.chrome')) { const q = '\n    <queries>\n        <intent>\n            <action android:name=\"android.intent.action.VIEW\" />\n            <category android:name=\"android.intent.category.BROWSABLE\" />\n            <data android:scheme=\"https\" />\n        </intent>\n        <package android:name=\"com.android.chrome\" />\n        <package android:name=\"com.android.vending\" />\n    </queries>'; if (m.includes('</manifest>')) { m = m.replace('</manifest>', q + '\n</manifest>'); } } fs.writeFileSync(path, m, 'utf8'); console.log('Manifest patched successfully.'); } else { console.error('Manifest file missing!'); }"
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = 'android/app/src/main/AndroidManifest.xml';
+          if (fs.existsSync(path)) {
+            let m = fs.readFileSync(path, 'utf8');
+            
+            // Cleartext Traffic configuration rule logic injection
+            if (!m.includes('android:usesCleartextTraffic')) {
+              m = m.replace('<application', '<application android:usesCleartextTraffic=\"true\"');
+            }
+            
+            // Inject official AdMob Meta-Data Test App ID for compilation setup
+            if (!m.includes('com.google.android.gms.ads.APPLICATION_ID')) {
+              const metaAdmob = '\n        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"ca-app-pub-3940256099942544~3347511713\"/>';
+              m = m.replace('</application>', metaAdmob + '\n    </application>');
+            }
+
+            // Query filtering rules so links boot cleanly out to external apps
+            if (!m.includes('com.android.chrome')) {
+              const q = '\n    <queries>\n        <intent>\n            <action android:name=\"android.intent.action.VIEW\" />\n            <category android:name=\"android.intent.category.BROWSABLE\" />\n            <data android:scheme=\"https\" />\n        </intent>\n        <package android:name=\"com.android.chrome\" />\n        <package android:name=\"com.android.vending\" />\n    </queries>';
+              if (m.includes('</manifest>')) { m = m.replace('</manifest>', q + '\n</manifest>'); }
+            }
+            
+            fs.writeFileSync(path, m, 'utf8');
+            console.log('Manifest parameters patched successfully.');
+          } else {
+            console.error('AndroidManifest.xml file missing!');
+          }
+          "
 
       - name: Sync Compiled Asset Bundles into Android Platform
-        run: npx cap sync android
+        run: npm run sync
 
       - name: Compile Native Android Debug Package Binary
         working-directory: android
@@ -75,9 +107,10 @@ jobs:
           name: neon-reflex-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
+      # ✨ CRITICAL FIX: Explicitly provides an auto-incrementing fallback tag so GitHub Releases don't crash
       - name: Deploy Production Release Package Target to GitHub
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: "Neon Reflex build #${{ github.run_number }}"
+          tag_name: build-v1.0.${{ github.run_number }}
+          name: "Neon Reflex Build #${{ github.run_number }}"
           files: android/app/build/outputs/apk/debug/app-debug.apk
