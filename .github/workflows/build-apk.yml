@@ -12,118 +12,54 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed to create a Release and upload the APK asset
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node Environment
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java Runtime environment
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Install dependencies
+      - name: Install Package Dependencies
         run: npm install
 
-      - name: Generate App Icons & Splash Screen
+      - name: Generate App Icons & Splash Screen Assets
         run: npx @capacitor/assets generate --android
 
-      - name: Build Web Assets
+      - name: Build Standard Web Assets Layout
         run: npm run build --if-present
 
-      # 🌟 FIXED COMPILATION BLOCK: Safe single-line execution to avoid YAML spaces errors
-      - name: Patch AndroidManifest for Monetag Cleartext Ads & Queries
-        run: |
-          node -e "const fs = require('fs'); const path = 'android/app/src/main/AndroidManifest.xml'; if (fs.existsSync(path)) { let manifest = fs.readFileSync(path, 'utf8'); if (!manifest.includes('android:usesCleartextTraffic')) { manifest = manifest.replace('<application', '<application android:usesCleartextTraffic=\"true\"'); console.log('Injected cleartext rules.'); } if (!manifest.includes('<package android:name=\"com.android.chrome\" />')) { const queryBlock = '\n    <queries>\n        <intent>\n            <action android:name=\"android.intent.action.VIEW\" />\n            <category android:name=\"android.intent.category.BROWSABLE\" />\n            <data android:scheme=\"https\" />\n        </intent>\n        <package android:name=\"com.android.chrome\" />\n        <package android:name=\"com.android.vending\" />\n    </queries>'; if (manifest.includes('</manifest>')) { manifest = manifest.replace('</manifest>', queryBlock + '\n</manifest>'); console.log('Injected custom intent package visibility queries.'); } } fs.writeFileSync(path, manifest, 'utf8'); } else { console.error('AndroidManifest.xml file path not located!'); }"
+      - name: Patch AndroidManifest XML Properties
+        run: node -e "const fs = require('fs'); const path = 'android/app/src/main/AndroidManifest.xml'; if (fs.existsSync(path)) { let m = fs.readFileSync(path, 'utf8'); if (!m.includes('android:usesCleartextTraffic')) { m = m.replace('<application', '<application android:usesCleartextTraffic=\"true\"'); } if (!m.includes('com.android.chrome')) { const q = '\n    <queries>\n        <intent>\n            <action android:name=\"android.intent.action.VIEW\" />\n            <category android:name=\"android.intent.category.BROWSABLE\" />\n            <data android:scheme=\"https\" />\n        </intent>\n        <package android:name=\"com.android.chrome\" />\n        <package android:name=\"com.android.vending\" />\n    </queries>'; if (m.includes('</manifest>')) { m = m.replace('</manifest>', q + '\n</manifest>'); } } fs.writeFileSync(path, m, 'utf8'); console.log('Manifest patched successfully.'); } else { console.error('Manifest file missing!'); }"
 
-      - name: Sync web assets into native project
+      - name: Sync Compiled Asset Bundles into Android Platform
         run: npx cap sync android
 
-      - name: Build debug APK
+      - name: Compile Native Android Debug Package Binary
         working-directory: android
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK as workflow artifact
+      - name: Store Production Binary Artifact Archive
         uses: actions/upload-artifact@v4
         with:
           name: neon-reflex-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Publish APK to a GitHub Release (direct download link)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ github.run_number }}
-          name: "Neon Reflex build #${{ github.run_number }}"
-          files: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Build Web Assets
-        run: npm run build --if-present
-
-      # 🌟 FIXED INDENTATION: Aligned properly with 6 empty spaces from the margin
-      - name: Patch AndroidManifest for Monetag Cleartext Ads & Queries
-        run: |
-          node -e "
-          const fs = require('fs');
-          const path = 'android/app/src/main/AndroidManifest.xml';
-          if (fs.existsSync(path)) {
-            let manifest = fs.readFileSync(path, 'utf8');
-            
-            // 1. Inject Cleartext Network Rules
-            if (!manifest.includes('android:usesCleartextTraffic')) {
-              manifest = manifest.replace('<application', '<application android:usesCleartextTraffic=\"true\"');
-              console.log('Injected cleartext rules.');
-            }
-            
-            // 2. Inject Missing Browser Package Intents (Fixes Capacitor 8 URL redirection fails)
-            if (!manifest.includes('<package android:name=\"com.android.chrome\" />')) {
-              const queryBlock = \`
-    <queries>
-        <intent>
-            <action android:name=\"android.intent.action.VIEW\" />
-            <category android:name=\"android.intent.category.BROWSABLE\" />
-            <data android:scheme=\"https\" />
-        </intent>
-        <package android:name=\"com.android.chrome\" />
-        <package android:name=\"com.android.vending\" />
-    </queries>\`;
-              
-              if (manifest.includes('</manifest>')) {
-                manifest = manifest.replace('</manifest>', queryBlock + '\n</manifest>');
-                console.log('Injected custom intent package visibility queries.');
-              }
-            }
-            
-            fs.writeFileSync(path, manifest, 'utf8');
-          } else {
-            console.error('AndroidManifest.xml file path not located!');
-          }
-          "
-
-      - name: Sync web assets into native project
-        run: npx cap sync android
-
-      - name: Build debug APK
-        working-directory: android
-        run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Upload APK as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: neon-reflex-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Publish APK to a GitHub Release (direct download link)
+      - name: Deploy Production Release Package Target to GitHub
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
