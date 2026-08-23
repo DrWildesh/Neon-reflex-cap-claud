@@ -8,6 +8,7 @@ on:
       - 'android/**'
       - 'capacitor.config.json'
       - 'package.json'
+      - 'resources/**'
   workflow_dispatch:
 
 permissions:
@@ -30,6 +31,9 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Generate App Icons & Splash Screen
+        run: npx @capacitor/assets generate --android
 
       - name: Sync web assets into native project
         run: npx cap sync android
