@@ -38,8 +38,8 @@ jobs:
       - name: Build Web Assets
         run: npm run build --if-present
 
-            # 🌟 UPDATE 2: Patches cleartext network traffic & missing Capacitor 8 redirect queries
-       - name: Patch AndroidManifest for Monetag Cleartext Ads & Queries
+      # 🌟 FIXED INDENTATION: Aligned properly with 6 empty spaces from the margin
+      - name: Patch AndroidManifest for Monetag Cleartext Ads & Queries
         run: |
           node -e "
           const fs = require('fs');
@@ -56,7 +56,7 @@ jobs:
             // 2. Inject Missing Browser Package Intents (Fixes Capacitor 8 URL redirection fails)
             if (!manifest.includes('<package android:name=\"com.android.chrome\" />')) {
               const queryBlock = \`
-       <queries>
+    <queries>
         <intent>
             <action android:name=\"android.intent.action.VIEW\" />
             <category android:name=\"android.intent.category.BROWSABLE\" />
@@ -64,7 +64,7 @@ jobs:
         </intent>
         <package android:name=\"com.android.chrome\" />
         <package android:name=\"com.android.vending\" />
-       </queries>\`;
+    </queries>\`;
               
               if (manifest.includes('</manifest>')) {
                 manifest = manifest.replace('</manifest>', queryBlock + '\n</manifest>');
@@ -77,7 +77,6 @@ jobs:
             console.error('AndroidManifest.xml file path not located!');
           }
           "
-
 
       - name: Sync web assets into native project
         run: npx cap sync android
