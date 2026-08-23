@@ -41,6 +41,22 @@ jobs:
       - name: Build Standard Web Assets Layout
         run: npm run build --if-present
 
+      # 🌟 NEW FIX STEP: Dynamically changes minSdkVersion from 24 to 26 inside Gradle vars
+      - name: Patch Native Android Build Variable Parameters
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = 'android/variables.gradle';
+          if (fs.existsSync(path)) {
+            let vars = fs.readFileSync(path, 'utf8');
+            vars = vars.replace(/minSdkVersion\s*=\s*\d+/g, 'minSdkVersion = 26');
+            fs.writeFileSync(path, vars, 'utf8');
+            console.log('Successfully upgraded minSdkVersion parameters to 26.');
+          } else {
+            console.error('variables.gradle not found at target directory layout.');
+          }
+          "
+
       - name: Patch AndroidManifest XML Properties
         run: node -e "const fs = require('fs'); const path = 'android/app/src/main/AndroidManifest.xml'; if (fs.existsSync(path)) { let m = fs.readFileSync(path, 'utf8'); if (!m.includes('android:usesCleartextTraffic')) { m = m.replace('<application', '<application android:usesCleartextTraffic=\"true\"'); } if (!m.includes('com.android.chrome')) { const q = '\n    <queries>\n        <intent>\n            <action android:name=\"android.intent.action.VIEW\" />\n            <category android:name=\"android.intent.category.BROWSABLE\" />\n            <data android:scheme=\"https\" />\n        </intent>\n        <package android:name=\"com.android.chrome\" />\n        <package android:name=\"com.android.vending\" />\n    </queries>'; if (m.includes('</manifest>')) { m = m.replace('</manifest>', q + '\n</manifest>'); } } fs.writeFileSync(path, m, 'utf8'); console.log('Manifest patched successfully.'); } else { console.error('Manifest file missing!'); }"
 
