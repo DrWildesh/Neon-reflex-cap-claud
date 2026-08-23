@@ -38,25 +38,46 @@ jobs:
       - name: Build Web Assets
         run: npm run build --if-present
 
-      # 🌟 UPDATE 2: Safely inserts the network cleartext traffic policy using Node
-      - name: Patch AndroidManifest for Monetag Cleartext Ads
+            # 🌟 UPDATE 2: Patches cleartext network traffic & missing Capacitor 8 redirect queries
+       - name: Patch AndroidManifest for Monetag Cleartext Ads & Queries
         run: |
           node -e "
           const fs = require('fs');
           const path = 'android/app/src/main/AndroidManifest.xml';
           if (fs.existsSync(path)) {
             let manifest = fs.readFileSync(path, 'utf8');
+            
+            // 1. Inject Cleartext Network Rules
             if (!manifest.includes('android:usesCleartextTraffic')) {
               manifest = manifest.replace('<application', '<application android:usesCleartextTraffic=\"true\"');
-              fs.writeFileSync(path, manifest, 'utf8');
-              console.log('Successfully injected cleartext traffic rules into Manifest.');
-            } else {
-              console.log('Cleartext traffic rule already present.');
+              console.log('Injected cleartext rules.');
             }
+            
+            // 2. Inject Missing Browser Package Intents (Fixes Capacitor 8 URL redirection fails)
+            if (!manifest.includes('<package android:name=\"com.android.chrome\" />')) {
+              const queryBlock = \`
+       <queries>
+        <intent>
+            <action android:name=\"android.intent.action.VIEW\" />
+            <category android:name=\"android.intent.category.BROWSABLE\" />
+            <data android:scheme=\"https\" />
+        </intent>
+        <package android:name=\"com.android.chrome\" />
+        <package android:name=\"com.android.vending\" />
+       </queries>\`;
+              
+              if (manifest.includes('</manifest>')) {
+                manifest = manifest.replace('</manifest>', queryBlock + '\n</manifest>');
+                console.log('Injected custom intent package visibility queries.');
+              }
+            }
+            
+            fs.writeFileSync(path, manifest, 'utf8');
           } else {
             console.error('AndroidManifest.xml file path not located!');
           }
           "
+
 
       - name: Sync web assets into native project
         run: npx cap sync android
