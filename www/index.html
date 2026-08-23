@@ -286,17 +286,7 @@
 </style>
 </head>
 <body>
-  <!-- Paste this inside your index.html file -->
-<div style="text-align: center; margin-top: 50px; z-index: 9999; position: relative;">
-  <button id="testInterstitialBtn" style="padding: 15px; margin: 10px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 5px;">
-    Show Interstitial Ad
-  </button>
   
-  <button id="testRewardedBtn" style="padding: 15px; margin: 10px; font-size: 16px; background: #28a745; color: white; border: none; border-radius: 5px;">
-    Show Rewarded Ad
-  </button>
-</div>
-
 <div id="app">
 
   <header class="hud">
@@ -398,137 +388,199 @@
    In a plain browser tab (no native shell), `Capacitor` is undefined, so
    every call below safely no-ops instead of throwing.
 ===================================================================== */
+// ==========================================
+// PRODUCTION ADS MODULE CONFIGURATION
+// ==========================================
+const AD_CONFIG = {
+  USE_ADMOB_FOR_INTERSTITIAL: true, // Set to false to switch interstitials to Monetag instantly
+  
+  // LIVE PRODUCTION ADS CREDENTIALS (Replace with your actual keys)
+  ADMOB_BANNER_ID: 'ca-app-pub-3940256099942544/6300978111', 
+  ADMOB_INTERSTITIAL_ID: 'ca-app-pub-3940256099942544/1033173712',
+  
+  MONETAG_INTERSTITIAL_URL: 'https://omg10.com/4/11381098',
+  MONETAG_REWARDED_URL: 'https://omg10.com/4/11381098'
+};
 
+const AdManager = {
+  _admob() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; },
+  _browser() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Browser) || null; },
+  _focusInterval: null,
+  _countdownInterval: null,
 
-  const AdManager = {
-  _admob(){ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; },
-
-  async initBannerAd(){
+  // Called automatically once on app initialization
+  async initialize() {
     const AdMob = this._admob();
-    if(!AdMob) return;
-
-    await AdMob.initialize({ 
+    if (!AdMob) return;
+    try {
+      await AdMob.initialize({ 
       initializeForTesting: true,
       testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
     });
+      // Load Banner immediately on launch
+      await AdMob.showBanner({
+        adId: AD_CONFIG.ADMOB_BANNER_ID, 
+        adSize: 'ADAPTIVE_BANNER',
+        position: 'BOTTOM_CENTER',
+        margin: 0, 
+        isTesting: true 
+      });
 
-    await AdMob.showBanner({
-      adId: 'ca-app-pub-3940256099942544/6300978111', 
-      adSize: 'ADAPTIVE_BANNER',
-      position: 'BOTTOM_CENTER',
-      margin: 20, 
-      isTesting: true 
-    });
+      this.preloadInterstitial();
+    } catch(e) { /* Silent fail for production stability */ }
   },
 
-  async preloadInterstitial(){
+  async preloadInterstitial() {
+    if (!AD_CONFIG.USE_ADMOB_FOR_INTERSTITIAL) return;
     const AdMob = this._admob();
-    if(!AdMob) return;
+    if (!AdMob) return;
     try {
       await AdMob.prepareInterstitial({
-        adId: 'ca-app-pub-3940256099942544/1033173712', 
+        adId: AD_CONFIG.ADMOB_INTERSTITIAL_ID, 
         isTesting: true
       });
-    } catch(e) { console.log('[AdManager] Interstitial preload failed:', e); }
+    } catch(e) { }
   },
 
-  async showInterstitial(onClosed){
-    const AdMob = this._admob();
-    if(!AdMob) { if(onClosed) onClosed(); return; }
-    try {
-      const sub = await AdMob.addListener('interstitialAdDismissed', () => {
-        sub.remove();
-        if(onClosed) onClosed();
-      });
-      await AdMob.showInterstitial();
-    } catch(e) {
-      console.log('[AdManager] Interstitial show failed:', e);
-      if(onClosed) onClosed();
+  // Call this method during transition events in your game/app logic
+  async showInterstitial(onClosed) {
+    if (AD_CONFIG.USE_ADMOB_FOR_INTERSTITIAL) {
+      const AdMob = this._admob();
+      if (!AdMob) { if (onClosed) onClosed(); return; }
+      try {
+        const sub = await AdMob.addListener('interstitialAdDismissed', () => {
+          sub.remove();
+          this.preloadInterstitial(); // Auto cache the next sequence
+          if (onClosed) onClosed();
+        });
+        await AdMob.showInterstitial();
+      } catch(e) {
+        // Safe programmatic structural fallback directly into Monetag container
+        this._showSmartlinkContainer(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
+      }
+    } else {
+      this._showSmartlinkContainer(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
     }
   },
 
-  // FIXED: Cleaned up to match the high-performance background preloading style
-  async preloadRewardedAd(){
-    const AdMob = this._admob();
-    if(!AdMob) return;
-    try {
-      await AdMob.prepareRewardedAd({
-        adId: 'ca-app-pub-3940256099942544/5224354917', // Google official rewarded test ID
-        isTesting: true
-      });
-      console.log('[AdManager] Rewarded ad preloaded in background.');
-    } catch(e) { console.log('[AdManager] Rewarded preload failed:', e); }
-  },
-
-  // FIXED: Removed the instant-run race condition
-  async showRewardedAd(onReward, onFail){
-    const AdMob = this._admob();
-    if(!AdMob) { if(onReward) onReward(); return; } 
-    try {
-      let rewardedGranted = false;
-
-      // 1. Setup the listener to capture when the user watches completely
-      const rewardSub = await AdMob.addListener('rewardedVideoAdReward', (reward) => {
-        console.log('[AdManager] Reward earned:', reward);
-        rewardedGranted = true; 
-      });
-
-      // 2. Setup the listener to capture when the ad closes
-      const closeSub = await AdMob.addListener('rewardedVideoAdDismissed', () => {
-        rewardSub.remove();
-        closeSub.remove();
-        
-        if (rewardedGranted) {
-          if(onReward) onReward();
+  // Call this method whenever a user explicitly claims a bonus item or reward
+  showRewardedAd(onReward, onFail) {
+    let rewardEarned = false;
+    
+    this._showSmartlinkContainer(
+      AD_CONFIG.MONETAG_REWARDED_URL, 
+      () => {
+        if (rewardEarned) {
+          if (onReward) onReward();
         } else {
-          if(onFail) onFail();
+          if (onFail) onFail();
         }
-      });
+      },
+      () => {
+        rewardEarned = true; // Flag reward confirmation safely when timer reaches zero
+      }
+    );
+  },
 
-      // 3. Launch the presentation player safely
-      await AdMob.showRewardedAd();
-    } catch(e) {
-      console.log('[AdManager] Rewarded ad show execution failed:', e);
-      if(onFail) onFail();
-    }
+  // Core background tracking container processing
+  _showSmartlinkContainer(url, onClosed, onTimerComplete) {
+    const container = document.getElementById('smartlink-container');
+    const iframe = document.getElementById('smartlink-frame');
+    const timerText = document.getElementById('sl-timer');
+    const closeBtn = document.getElementById('sl-close-btn');
+
+    if (!container || !iframe) return;
+
+    iframe.src = url;
+    timerText.style.display = 'block';
+    timerText.innerText = 'Ad ends in 5s';
+    closeBtn.style.display = 'none';
+    container.style.display = 'flex';
+
+    let timeLeft = 5;
+    if (this._countdownInterval) clearInterval(this._countdownInterval);
+    
+    this._countdownInterval = setInterval(() => {
+      timeLeft--;
+      if (timeLeft > 0) {
+        timerText.innerText = `Ad ends in ${timeLeft}s`;
+      } else {
+        clearInterval(this._countdownInterval);
+        timerText.style.display = 'none';
+        closeBtn.style.display = 'block'; 
+        if (onTimerComplete) onTimerComplete();
+      }
+    }, 1000);
+
+    if (this._focusInterval) clearInterval(this._focusInterval);
+    
+    this._focusInterval = setInterval(async () => {
+      if (document.activeElement === iframe) {
+        clearInterval(this._focusInterval);
+        
+        const BrowserPlugin = this._browser();
+        if (BrowserPlugin) {
+          await BrowserPlugin.open({ url: url });
+        } else {
+          window.open(url, '_system');
+        }
+        
+        this._closeSmartlinkUI();
+        if (onTimerComplete) onTimerComplete(); // Process validation parameters upon redirect escape
+        if (onClosed) onClosed();
+      }
+    }, 400);
+
+    closeBtn.onclick = () => {
+      this._closeSmartlinkUI();
+      if (onClosed) onClosed();
+    };
+  },
+
+  _closeSmartlinkUI() {
+    if (this._countdownInterval) clearInterval(this._countdownInterval);
+    if (this._focusInterval) clearInterval(this._focusInterval);
+    
+    const container = document.getElementById('smartlink-container');
+    const iframe = document.getElementById('smartlink-frame');
+    
+    if (container) container.style.display = 'none';
+    if (iframe) iframe.src = ''; 
+    window.focus();
   }
 };
 
-// ==========================================
-// RUNNER TRIGGER BLOCK WITH REWARD PRELOADING
-// ==========================================
+// Automatic startup invocation engine
 window.addEventListener('DOMContentLoaded', () => {
-  setTimeout(async () => {
-    await AdManager.initBannerAd();
-    await AdManager.preloadInterstitial();
-    await AdManager.preloadRewardedAd(); // NEW: Cache the video file on startup!
-  }, 3000);
-
-  const intBtn = document.getElementById('testInterstitialBtn');
-  if (intBtn) {
-    intBtn.addEventListener('click', () => {
-      AdManager.showInterstitial(async () => {
-        await AdManager.preloadInterstitial();
-      });
-    });
-  }
-
-  const rewBtn = document.getElementById('testRewardedBtn');
-  if (rewBtn) {
-    rewBtn.addEventListener('click', () => {
-      AdManager.showRewardedAd(
-        async () => {
-          alert('Success! You watched the video completely. Here is your reward!');
-          await AdManager.preloadRewardedAd(); // Preload next one immediately
-        },
-        async () => {
-          alert('Failed to show rewarded ad or you skipped out early.');
-          await AdManager.preloadRewardedAd(); // Reload a clean instance
-        }
-      );
-    });
-  }
+  AdManager.initialize();
 });
+const AD_STRATEGY = {
+  // OPTIONS: "ADMOB_ONLY", "SMARTLINK_ONLY", or "HYBRID" (AdMob first, Smartlink fallback)
+  CURRENT_MODE: "HYBRID", 
+  
+  MONETAG_URL: "https://your-monetag-smartlink.com"
+};
+
+// Simplified dynamic wrapper for all future apps
+async function triggerAppInterstitial(onAdClosed) {
+  switch(AD_STRATEGY.CURRENT_MODE) {
+    
+    case "ADMOB_ONLY":
+      // Calls AdMob natively, falls back to nothing if it fails
+      await runNativeAdMobInterstitial(onAdClosed);
+      break;
+      
+    case "SMARTLINK_ONLY":
+      // Bypasses AdMob completely, launches the 5s container immediately
+      AdManager._showSmartlinkContainer(AD_STRATEGY.MONETAG_URL, onAdClosed);
+      break;
+      
+    case "HYBRID":
+      // Best Option: Tries AdMob first. If no inventory/fill, automatically loads container
+      await AdManager.showInterstitial(onAdClosed);
+      break;
+  }
+}
 
 
 
@@ -1077,5 +1129,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
 })();
 </script>
+  <!-- PRODUCTION MONETAG SMARTLINK INTERSTITIAL & REWARDED OVERLAY CANVAS -->
+<div id="smartlink-container" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #000000; z-index: 999999; flex-direction: column;">
+  <div style="position: absolute; top: 16px; right: 16px; z-index: 1000000; display: flex; gap: 10px;">
+    <div id="sl-timer" style="background: rgba(0, 0, 0, 0.7); color: #ffffff; padding: 8px 14px; border-radius: 20px; font-family: sans-serif; font-size: 14px; font-weight: bold; border: 1px solid rgba(255, 255, 255, 0.3);">Ad ends in 5s</div>
+    <button id="sl-close-btn" style="display: none; cursor: pointer; background: #ffffff; color: #000000; padding: 8px 14px; border-radius: 20px; font-family: sans-serif; font-size: 14px; font-weight: bold; border: none;">✕ Close</button>
+  </div>
+  <iframe id="smartlink-frame" src="" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" style="width: 100%; height: 100%; border: none;"></iframe>
+</div>
+
 </body>
 </html>
