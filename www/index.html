@@ -391,19 +391,22 @@
 // ==========================================
 // PRODUCTION ADS MODULE CONFIGURATION
 // ==========================================
+
+    
 const AD_CONFIG = {
   USE_ADMOB_FOR_INTERSTITIAL: true, 
-  
   ADMOB_BANNER_ID: 'ca-app-pub-3940256099942544/6300978111', 
   ADMOB_INTERSTITIAL_ID: 'ca-app-pub-3940256099942544/1033173712',
-  
   MONETAG_INTERSTITIAL_URL: 'https://omg10.com/4/11381098',
   MONETAG_REWARDED_URL: 'https://omg10.com/4/11381098'
 };
 
 const AdManager = {
   _admob() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; },
+  _iab() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.InAppBrowser) || null; },
   _browser() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Browser) || null; },
+  _countdownInterval: null,
+  _adInstance: null,
 
   async initialize() {
     const AdMob = this._admob();
@@ -445,60 +448,116 @@ const AdManager = {
         });
         await AdMob.showInterstitial();
       } catch(e) {
-        // Fallback with a pre-ad delay layer to preserve Monetag CPM metrics
-        this._showPreAdTimerThenOpen(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
+        this._launchSecureGameBrowser(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
       }
     } else {
-      this._showPreAdTimerThenOpen(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
+      this._launchSecureGameBrowser(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
     }
   },
 
   showRewardedAd(onReward, onFail) {
-    // Force a 5-second preparation countdown before opening the Monetag Rewarded URL
-    this._showPreAdTimerThenOpen(AD_CONFIG.MONETAG_REWARDED_URL, () => {
-      if (onReward) onReward();
-    });
+    let rewardEarned = false;
+    this._launchSecureGameBrowser(
+      AD_CONFIG.MONETAG_REWARDED_URL,
+      () => {
+        if (rewardEarned) { if (onReward) onReward(); } 
+        else { if (onFail) onFail(); }
+      },
+      () => { rewardEarned = true; } // Earned when timer hits 0
+    );
   },
 
-  // 🌟 THE SAFE-GUARD PAYOUT ENGINE: Enforces user patience before opening the link
-  _showPreAdTimerThenOpen(url, onFinished) {
-    // 1. Create a dynamic native HTML loader element on top of your app view
-    const loader = document.createElement('div');
-    loader.style = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.95); z-index:999999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#fff; font-family:sans-serif;";
-    loader.innerHTML = `
-      <div style="font-size:20px; font-weight:bold; margin-bottom:10px;">Loading Sponsor Ad...</div>
-      <div id="pre-ad-countdown" style="font-size:16px; color:#aaa;">Please wait 5s to claim reward</div>
-    `;
-    document.body.appendChild(loader);
+  // 🌟 THE TRUE INTERSTITIAL ENGINE: Game Overlay with Top-Fitted Timer Numbers
+  async _launchSecureGameBrowser(url, onClosed, onTimerComplete) {
+    const container = document.getElementById('game-ad-container');
+    const timerBadge = document.getElementById('game-ad-timer');
+    const closeBtn = document.getElementById('game-ad-close');
+    const IAB = this._iab();
 
+    if (!container || !timerBadge || !closeBtn) return;
+
+    // 1. Reset states & Show UI Container
+    timerBadge.style.display = 'block';
+    timerBadge.innerText = '5';
+    closeBtn.style.display = 'none';
+    container.style.display = 'flex';
+
+    // 2. Open an Authentic System WebView inside our specific Container Box boundaries
+    if (IAB) {
+      try {
+        this._adInstance = await IAB.openWebView({
+          url: url,
+          options: {
+            clearCache: false,
+            toolbar: false, // Disables native close bars completely
+            fullscreen: true
+          }
+        });
+
+        // Redirect Listener: If user clicks an ad offer, boot out to the real device app browser
+        this._adInstance.addListener('urlChanged', async (event) => {
+          if (event.url && event.url !== url) {
+            const BrowserPlugin = this._browser();
+            if (BrowserPlugin) {
+              await BrowserPlugin.open({ url: event.url });
+            } else {
+              window.open(event.url, '_system');
+            }
+            this._closeGameAdEngine();
+            if (onTimerComplete) onTimerComplete();
+            if (onClosed) onClosed();
+          }
+        });
+      } catch(e) { window.open(url, '_system'); }
+    } else {
+      // Fallback if plugin is not compiled yet
+      window.open(url, '_system');
+      this._closeGameAdEngine();
+      if (onClosed) onClosed();
+      return;
+    }
+
+    // 3. Simple Number Countdown Script (e.g. 5, 4, 3, 2, 1)
     let timeLeft = 5;
-    const interval = setInterval(async () => {
+    if (this._countdownInterval) clearInterval(this._countdownInterval);
+    
+    this._countdownInterval = setInterval(() => {
       timeLeft--;
-      const textNode = document.getElementById('pre-ad-countdown');
-      if (textNode) textNode.innerText = `Please wait ${timeLeft}s to claim reward`;
-
-      if (timeLeft <= 0) {
-        clearInterval(interval);
-        document.body.removeChild(loader); // Remove the loader popup
-
-        // 2. Open the full-screen native Chrome Custom Tab panel now that the user is prepared
-        const BrowserPlugin = this._browser();
-        if (BrowserPlugin) {
-          await BrowserPlugin.open({ url: url, windowName: '_blank', presentationStyle: 'fullscreen' });
-        } else {
-          window.open(url, '_system');
-        }
-
-        // Trigger reward/success callback actions instantly upon opening
-        if (onFinished) onFinished();
+      if (timeLeft > 0) {
+        timerBadge.innerText = timeLeft;
+      } else {
+        clearInterval(this._countdownInterval);
+        timerBadge.style.display = 'none';
+        closeBtn.style.display = 'block'; // Unlocks the "✕ Close" option
+        if (onTimerComplete) onTimerComplete();
       }
     }, 1000);
+
+    closeBtn.onclick = () => {
+      this._closeGameAdEngine();
+      if (onClosed) onClosed();
+    };
+  },
+
+  _closeGameAdEngine() {
+    if (this._countdownInterval) clearInterval(this._countdownInterval);
+    
+    const container = document.getElementById('game-ad-container');
+    if (container) container.style.display = 'none';
+    
+    const IAB = this._iab();
+    if (IAB && this._adInstance) {
+      try { IAB.close(); } catch(e){}
+    }
+    this._adInstance = null;
+    window.focus();
   }
 };
 
 window.addEventListener('DOMContentLoaded', () => {
   AdManager.initialize();
 });
+
 
   
 const AD_STRATEGY = {
