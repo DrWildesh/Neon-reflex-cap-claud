@@ -35,6 +35,29 @@ jobs:
       - name: Generate App Icons & Splash Screen
         run: npx @capacitor/assets generate --android
 
+      - name: Build Web Assets
+        run: npm run build --if-present
+
+      # 🌟 UPDATE 2: Safely inserts the network cleartext traffic policy using Node
+      - name: Patch AndroidManifest for Monetag Cleartext Ads
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = 'android/app/src/main/AndroidManifest.xml';
+          if (fs.existsSync(path)) {
+            let manifest = fs.readFileSync(path, 'utf8');
+            if (!manifest.includes('android:usesCleartextTraffic')) {
+              manifest = manifest.replace('<application', '<application android:usesCleartextTraffic=\"true\"');
+              fs.writeFileSync(path, manifest, 'utf8');
+              console.log('Successfully injected cleartext traffic rules into Manifest.');
+            } else {
+              console.log('Cleartext traffic rule already present.');
+            }
+          } else {
+            console.error('AndroidManifest.xml file path not located!');
+          }
+          "
+
       - name: Sync web assets into native project
         run: npx cap sync android
 
