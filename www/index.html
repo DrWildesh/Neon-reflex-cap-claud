@@ -392,9 +392,8 @@
 // PRODUCTION ADS MODULE CONFIGURATION
 // ==========================================
 const AD_CONFIG = {
-  USE_ADMOB_FOR_INTERSTITIAL: true, // Set to false to switch interstitials to Monetag instantly
+  USE_ADMOB_FOR_INTERSTITIAL: true, 
   
-  // LIVE PRODUCTION ADS CREDENTIALS (Replace with your actual keys)
   ADMOB_BANNER_ID: 'ca-app-pub-3940256099942544/6300978111', 
   ADMOB_INTERSTITIAL_ID: 'ca-app-pub-3940256099942544/1033173712',
   
@@ -405,10 +404,7 @@ const AD_CONFIG = {
 const AdManager = {
   _admob() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; },
   _browser() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Browser) || null; },
-  _focusInterval: null,
-  _countdownInterval: null,
 
-  // Called automatically once on app initialization
   async initialize() {
     const AdMob = this._admob();
     if (!AdMob) return;
@@ -417,7 +413,6 @@ const AdManager = {
       initializeForTesting: true,
       testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
     });
-      // Load Banner immediately on launch
       await AdMob.showBanner({
         adId: AD_CONFIG.ADMOB_BANNER_ID, 
         adSize: 'ADAPTIVE_BANNER',
@@ -425,9 +420,8 @@ const AdManager = {
         margin: 0, 
         isTesting: true 
       });
-
       this.preloadInterstitial();
-    } catch(e) { /* Silent fail for production stability */ }
+    } catch(e) {}
   },
 
   async preloadInterstitial() {
@@ -435,14 +429,10 @@ const AdManager = {
     const AdMob = this._admob();
     if (!AdMob) return;
     try {
-      await AdMob.prepareInterstitial({
-        adId: AD_CONFIG.ADMOB_INTERSTITIAL_ID, 
-        isTesting: true
-      });
-    } catch(e) { }
+      await AdMob.prepareInterstitial({ adId: AD_CONFIG.ADMOB_INTERSTITIAL_ID, isTesting: false });
+    } catch(e) {}
   },
 
-  // Call this method during transition events in your game/app logic
   async showInterstitial(onClosed) {
     if (AD_CONFIG.USE_ADMOB_FOR_INTERSTITIAL) {
       const AdMob = this._admob();
@@ -450,110 +440,67 @@ const AdManager = {
       try {
         const sub = await AdMob.addListener('interstitialAdDismissed', () => {
           sub.remove();
-          this.preloadInterstitial(); // Auto cache the next sequence
+          this.preloadInterstitial();
           if (onClosed) onClosed();
         });
         await AdMob.showInterstitial();
       } catch(e) {
-        // Safe programmatic structural fallback directly into Monetag container
-        this._showSmartlinkContainer(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
+        // Fallback with a pre-ad delay layer to preserve Monetag CPM metrics
+        this._showPreAdTimerThenOpen(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
       }
     } else {
-      this._showSmartlinkContainer(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
+      this._showPreAdTimerThenOpen(AD_CONFIG.MONETAG_INTERSTITIAL_URL, onClosed);
     }
   },
 
-  // Call this method whenever a user explicitly claims a bonus item or reward
   showRewardedAd(onReward, onFail) {
-    let rewardEarned = false;
-    
-    this._showSmartlinkContainer(
-      AD_CONFIG.MONETAG_REWARDED_URL, 
-      () => {
-        if (rewardEarned) {
-          if (onReward) onReward();
-        } else {
-          if (onFail) onFail();
-        }
-      },
-      () => {
-        rewardEarned = true; // Flag reward confirmation safely when timer reaches zero
-      }
-    );
+    // Force a 5-second preparation countdown before opening the Monetag Rewarded URL
+    this._showPreAdTimerThenOpen(AD_CONFIG.MONETAG_REWARDED_URL, () => {
+      if (onReward) onReward();
+    });
   },
 
-  // Core background tracking container processing
-  _showSmartlinkContainer(url, onClosed, onTimerComplete) {
-    const container = document.getElementById('smartlink-container');
-    const iframe = document.getElementById('smartlink-frame');
-    const timerText = document.getElementById('sl-timer');
-    const closeBtn = document.getElementById('sl-close-btn');
-
-    if (!container || !iframe) return;
-
-    iframe.src = url;
-    timerText.style.display = 'block';
-    timerText.innerText = 'Ad ends in 5s';
-    closeBtn.style.display = 'none';
-    container.style.display = 'flex';
+  // 🌟 THE SAFE-GUARD PAYOUT ENGINE: Enforces user patience before opening the link
+  _showPreAdTimerThenOpen(url, onFinished) {
+    // 1. Create a dynamic native HTML loader element on top of your app view
+    const loader = document.createElement('div');
+    loader.style = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.95); z-index:999999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#fff; font-family:sans-serif;";
+    loader.innerHTML = `
+      <div style="font-size:20px; font-weight:bold; margin-bottom:10px;">Loading Sponsor Ad...</div>
+      <div id="pre-ad-countdown" style="font-size:16px; color:#aaa;">Please wait 5s to claim reward</div>
+    `;
+    document.body.appendChild(loader);
 
     let timeLeft = 5;
-    if (this._countdownInterval) clearInterval(this._countdownInterval);
-    
-    this._countdownInterval = setInterval(() => {
+    const interval = setInterval(async () => {
       timeLeft--;
-      if (timeLeft > 0) {
-        timerText.innerText = `Ad ends in ${timeLeft}s`;
-      } else {
-        clearInterval(this._countdownInterval);
-        timerText.style.display = 'none';
-        closeBtn.style.display = 'block'; 
-        if (onTimerComplete) onTimerComplete();
-      }
-    }, 1000);
+      const textNode = document.getElementById('pre-ad-countdown');
+      if (textNode) textNode.innerText = `Please wait ${timeLeft}s to claim reward`;
 
-    if (this._focusInterval) clearInterval(this._focusInterval);
-    
-    this._focusInterval = setInterval(async () => {
-      if (document.activeElement === iframe) {
-        clearInterval(this._focusInterval);
-        
+      if (timeLeft <= 0) {
+        clearInterval(interval);
+        document.body.removeChild(loader); // Remove the loader popup
+
+        // 2. Open the full-screen native Chrome Custom Tab panel now that the user is prepared
         const BrowserPlugin = this._browser();
         if (BrowserPlugin) {
-          await BrowserPlugin.open({ url: url });
+          await BrowserPlugin.open({ url: url, windowName: '_blank', presentationStyle: 'fullscreen' });
         } else {
           window.open(url, '_system');
         }
-        
-        this._closeSmartlinkUI();
-        if (onTimerComplete) onTimerComplete(); // Process validation parameters upon redirect escape
-        if (onClosed) onClosed();
+
+        // Trigger reward/success callback actions instantly upon opening
+        if (onFinished) onFinished();
       }
-    }, 400);
-
-    closeBtn.onclick = () => {
-      this._closeSmartlinkUI();
-      if (onClosed) onClosed();
-    };
-  },
-
-  _closeSmartlinkUI() {
-    if (this._countdownInterval) clearInterval(this._countdownInterval);
-    if (this._focusInterval) clearInterval(this._focusInterval);
-    
-    const container = document.getElementById('smartlink-container');
-    const iframe = document.getElementById('smartlink-frame');
-    
-    if (container) container.style.display = 'none';
-    if (iframe) iframe.src = ''; 
-    window.focus();
+    }, 1000);
   }
 };
 
-// Automatic startup invocation engine
 window.addEventListener('DOMContentLoaded', () => {
   AdManager.initialize();
 });
+
+  
 const AD_STRATEGY = {
   // OPTIONS: "ADMOB_ONLY", "SMARTLINK_ONLY", or "HYBRID" (AdMob first, Smartlink fallback)
   CURRENT_MODE: "HYBRID", 
@@ -1129,14 +1076,6 @@ async function triggerAppInterstitial(onAdClosed) {
 
 })();
 </script>
-  <!-- PRODUCTION MONETAG SMARTLINK INTERSTITIAL & REWARDED OVERLAY CANVAS -->
-<div id="smartlink-container" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #000000; z-index: 999999; flex-direction: column;">
-  <div style="position: absolute; top: 16px; right: 16px; z-index: 1000000; display: flex; gap: 10px;">
-    <div id="sl-timer" style="background: rgba(0, 0, 0, 0.7); color: #ffffff; padding: 8px 14px; border-radius: 20px; font-family: sans-serif; font-size: 14px; font-weight: bold; border: 1px solid rgba(255, 255, 255, 0.3);">Ad ends in 5s</div>
-    <button id="sl-close-btn" style="display: none; cursor: pointer; background: #ffffff; color: #000000; padding: 8px 14px; border-radius: 20px; font-family: sans-serif; font-size: 14px; font-weight: bold; border: none;">✕ Close</button>
-  </div>
-  <iframe id="smartlink-frame" src="" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" style="width: 100%; height: 100%; border: none;"></iframe>
-</div>
-
+  
 </body>
 </html>
