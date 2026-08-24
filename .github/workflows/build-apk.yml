@@ -8,7 +8,6 @@ on:
       - 'android/**'
       - 'capacitor.config.json'
       - 'package.json'
-      - 'resources/**'
   workflow_dispatch:
 
 permissions:
@@ -18,95 +17,58 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node Environment
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # ✕ REMOVED cache: 'npm' to prevent the lock file requirement error
+          cache: 'npm' # Speeds up consecutive builds dramatically
 
-      - name: Setup Java Runtime Environment
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
-          cache: 'gradle' # 🚀 Gradle caching can remain active safely
+          cache: 'gradle' # Prevents redownloading gradle files on every run
 
-      - name: Install Package Dependencies
+      - name: Install Dependencies
         run: npm install
 
-      # 🚀 FIXED: Removed the invalid --if-present flag
-      - name: Generate App Icons & Splash Screen Assets
+      - name: Generate App Icons
         run: npx @capacitor/assets generate --android
 
-      - name: Build Standard Web Assets Layout
-        run: npm run build --if-present
-
-
-      - name: Patch Native Android Build Variable Parameters
-        run: |
-          node -e "
-          const fs = require('fs');
-          const path = 'android/variables.gradle';
-          if (fs.existsSync(path)) {
-            let vars = fs.readFileSync(path, 'utf8');
-            vars = vars.replace(/minSdkVersion\s*=\s*\d+/g, 'minSdkVersion = 26');
-            fs.writeFileSync(path, vars, 'utf8');
-            console.log('Successfully upgraded minSdkVersion parameters to 26.');
-          } else {
-            console.error('variables.gradle not found at target directory layout.');
-          }
-          "
-
-      - name: Patch AndroidManifest XML Properties
+      - name: Inject AdMob App ID
         run: |
           node -e "
           const fs = require('fs');
           const path = 'android/app/src/main/AndroidManifest.xml';
           if (fs.existsSync(path)) {
             let m = fs.readFileSync(path, 'utf8');
-            
-            if (!m.includes('android:usesCleartextTraffic')) {
-              m = m.replace('<application', '<application android:usesCleartextTraffic=\"true\"');
-            }
-            
             if (!m.includes('com.google.android.gms.ads.APPLICATION_ID')) {
               const metaAdmob = '\n        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"ca-app-pub-3940256099942544~3347511713\"/>';
               m = m.replace('</application>', metaAdmob + '\n    </application>');
+              fs.writeFileSync(path, m, 'utf8');
             }
-
-            if (!m.includes('com.android.chrome')) {
-              const q = '\n    <queries>\n        <intent>\n            <action android:name=\"android.intent.action.VIEW\" />\n            <category android:name=\"android.intent.category.BROWSABLE\" />\n            <data android:scheme=\"https\" />\n        </intent>\n        <package android:name=\"com.android.chrome\" />\n        <package android:name=\"com.android.vending\" />\n    </queries>';
-              if (m.includes('</manifest>')) { m = m.replace('</manifest>', q + '\n</manifest>'); }
-            }
-            
-            fs.writeFileSync(path, m, 'utf8');
-            console.log('Manifest parameters patched successfully.');
-          } else {
-            console.error('AndroidManifest.xml file missing!');
           }
           "
 
-      - name: Sync Compiled Asset Bundles into Android Platform
-        run: npm run sync
+      - name: Sync Native Assets
+        run: npx cap sync android
 
-      - name: Compile Native Android Debug Package Binary
+      - name: Build Debug APK
         working-directory: android
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Store Production Binary Artifact Archive
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: neon-reflex-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Deploy Production Release Package Target to GitHub
+      - name: Auto Tag & Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-v1.0.${{ github.run_number }}
-          name: "Neon Reflex Build #${{ github.run_number }}"
+          tag_name: build-${{ github.run_number }}
+          name: "Neon Reflex build #${{ github.run_number }}"
           files: android/app/build/outputs/apk/debug/app-debug.apk
