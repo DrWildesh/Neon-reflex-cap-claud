@@ -411,8 +411,10 @@ const AdManager = {
     }
     
     try {
-      await AdMob.initialize({ initializeForTesting: true });
-      
+      await AdMob.initialize({ 
+      initializeForTesting: true,
+      testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
+    });
       // Auto-show standard adaptive banner
       await AdMob.showBanner({
         adId: AD_STRATEGY.ADMOB_BANNER_ID, 
