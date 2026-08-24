@@ -22,13 +22,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm' # Speeds up consecutive builds dramatically
+          # ✕ REMOVED cache: 'npm' to prevent the lock file requirement error
 
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
-          cache: 'gradle' # Prevents redownloading gradle files on every run
+          cache: 'gradle' 
 
       - name: Install Dependencies
         run: npm install
