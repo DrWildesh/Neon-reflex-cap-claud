@@ -392,68 +392,45 @@
 // PRODUCTION ADS MODULE CONFIGURATION
 // ==========================================
 
-    
-const AD_STRATEGY = {
-  // OPTIONS: "ADMOB_ONLY", "SMARTLINK_ONLY", or "HYBRID"
-  CURRENT_MODE: "HYBRID", 
-  
-  // 🔗 Update these parameters with your real active tracking locations
-  ADMOB_BANNER_ID: 'ca-app-pub-3940256099942544/6300978111', 
+    const AD_STRATEGY = {
+  ADMOB_BANNER_ID: 'ca-app-pub-3940256099942544/6300978111',       
   ADMOB_INTERSTITIAL_ID: 'ca-app-pub-3940256099942544/1033173712',
-  MONETAG_URL: 'https://omg10.com/4/11381098'
+  ADMOB_REWARDED_ID: 'ca-app-pub-3940256099942544/5224354917'     // Official Google Test Rewarded Ad ID
 };
 
-// 🌟 ADDED BLUEPRINT Logic directly into the manager layout context context frame!
-async function triggerAppInterstitial(onAdClosed) {
-  console.log(`Processing transition ad context routing via: ${AD_STRATEGY.CURRENT_MODE}`);
-  
-  switch(AD_STRATEGY.CURRENT_MODE) {
-    case "ADMOB_ONLY":
-      const backupMode = AD_STRATEGY.CURRENT_MODE;
-      AD_STRATEGY.CURRENT_MODE = "ADMOB_ONLY"; 
-      await AdManager.showInterstitial(() => {
-        AD_STRATEGY.CURRENT_MODE = backupMode;
-        if (onAdClosed) onAdClosed();
-      });
-      break;
-      
-    case "SMARTLINK_ONLY":
-    case "HYBRID":
-    default:
-      await AdManager.showInterstitial(onAdClosed);
-      break;
-  }
-}
-
 const AdManager = {
-  _admob() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; },
-  _iab() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.InAppBrowser) || null; },
-  _browser() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Browser) || null; },
-
-  _countdownInterval: null,
-  _isRewardEligible: false,
-  _adTimerCount: 5,
+  _admob() { 
+    return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; 
+  },
 
   async initialize() {
     const AdMob = this._admob();
-    if (!AdMob) return;
+    if (!AdMob) {
+      console.warn("AdMob plugin missing or not running natively.");
+      return;
+    }
+    
     try {
-      await AdMob.initialize({ 
-      initializeForTesting: true,
-      testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
-    });
+      await AdMob.initialize({ initializeForTesting: true });
+      
+      // Auto-show standard adaptive banner
       await AdMob.showBanner({
         adId: AD_STRATEGY.ADMOB_BANNER_ID, 
         adSize: 'ADAPTIVE_BANNER',
         position: 'BOTTOM_CENTER',
         isTesting: true 
       });
+
+      // Background preload multi-screen ads
       this.preloadInterstitial();
-    } catch(e) { console.error("AdMob Init Shielded:", e); }
+      this.preloadRewardedAd();
+    } catch(e) { 
+      console.error("AdMob Init Failed:", e); 
+    }
   },
 
+  /* --- INTERSTITIAL ADS --- */
   async preloadInterstitial() {
-    if (AD_STRATEGY.CURRENT_MODE === "SMARTLINK_ONLY") return;
     const AdMob = this._admob();
     if (!AdMob) return;
     try {
@@ -461,15 +438,9 @@ const AdManager = {
     } catch(e) {}
   },
 
-  // ⚡ STRATEGY METHOD: Handles standard transitions between scenes/levels
   async showInterstitial(onClosed) {
     const AdMob = this._admob();
-    
-    if (AD_STRATEGY.CURRENT_MODE === "SMARTLINK_ONLY" || !AdMob) {
-      this._launchSecureGameBrowser(AD_STRATEGY.MONETAG_URL, onClosed);
-      return;
-    }
-
+    if (!AdMob) { if (onClosed) onClosed(); return; }
     try {
       const sub = await AdMob.addListener('interstitialAdDismissed', () => {
         sub.remove();
@@ -478,103 +449,67 @@ const AdManager = {
       });
       await AdMob.showInterstitial();
     } catch(e) {
-      // HYBRID FALLBACK: If AdMob errors out or fails to fill, launch Monetag instantly
-      if (AD_STRATEGY.CURRENT_MODE === "HYBRID") {
-        this._launchSecureGameBrowser(AD_STRATEGY.MONETAG_URL, onClosed);
-      } else {
-        if (onClosed) onClosed();
-      }
+      if (onClosed) onClosed();
     }
   },
 
-  // 🎁 REWARD METHOD: Handles your "Watch ad to continue" layout workflow
-  showRewardedAd(onReward, onFail) {
-    this._isRewardEligible = false;
-    this._adTimerCount = 5;
-
-    this._launchSecureGameBrowser(
-      AD_STRATEGY.MONETAG_URL,
-      () => {
-        if (this._isRewardEligible) { if (onReward) onReward(); } 
-        else { if (onFail) onFail(); }
-      },
-      () => { this._isRewardEligible = true; }
-    );
+  /* --- REWARDED ADS --- */
+  async preloadRewardedAd() {
+    const AdMob = this._admob();
+    if (!AdMob) return;
+    try {
+      // Requests and holds a single full-screen rewarded ad unit in device memory
+      await AdMob.prepareRewardVideoAd({ 
+        adId: AD_STRATEGY.ADMOB_REWARDED_ID, 
+        isTesting: true 
+      });
+      console.log("Rewarded ad preloaded successfully.");
+    } catch(e) {
+      console.error("Error preloading rewarded video ad:", e);
+    }
   },
 
-  async _launchSecureGameBrowser(url, onClosed, onTimerComplete) {
-    const IAB = this._iab();
-    const BrowserPlugin = this._browser();
-
-    if (!IAB) {
-      if (BrowserPlugin) { await BrowserPlugin.open({ url: url }); } 
-      else { window.open(url, '_system'); }
-      if (onClosed) onClosed();
+  async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
+    const AdMob = this._admob();
+    if (!AdMob) {
+      console.warn("Native framework context unavailable.");
+      if (onAdFailedOrClosed) onAdFailedOrClosed();
       return;
     }
 
+    let earnedRewardItem = null;
+
     try {
-      await IAB.removeAllListeners();
-
-      // Intercept external redirect routing and fire standalone system app view
-      await IAB.addListener('browserPageNavigationCompleted', async (event) => {
-        if (event.url && event.url !== url && !event.url.includes('omg10.com')) {
-          this._isRewardEligible = true;
-          if (onTimerComplete) onTimerComplete();
-
-          await IAB.close();
-
-          if (BrowserPlugin) {
-            await BrowserPlugin.open({ url: event.url });
-          } else {
-            window.open(event.url, '_system');
-          }
-          if (onClosed) onClosed();
-        }
+      // 1. Listen for user completing the interaction sequence successfully
+      const rewardSub = await AdMob.addListener('onRewardVideoAdRewardReceived', (reward) => {
+        // reward object contains tracking keys: { type: 'coins', amount: 10 }
+        earnedRewardItem = reward; 
       });
 
-      await IAB.addListener('browserClosed', () => {
-        if (this._countdownInterval) clearInterval(this._countdownInterval);
-        if (onClosed) onClosed();
-      });
+      // 2. Listen for the window dismissal event sequence to process state transitions
+      const dismissSub = await AdMob.addListener('onRewardVideoAdDismissed', () => {
+        // Strip listeners immediately to avoid stacked listeners on reuse
+        rewardSub.remove();
+        dismissSub.remove();
+        
+        // Auto-fetch next ad unit to maintain user fluid navigation
+        this.preloadRewardedAd();
 
-      await IAB.openInWebView({
-        url: url,
-        options: {
-          showToolbar: true,
-          toolbarPosition: 'top',
-          closeButtonText: 'Wait (5s)',
-          clearCache: false
-        }
-      });
-
-      if (this._countdownInterval) clearInterval(this._countdownInterval);
-
-      this._countdownInterval = setInterval(async () => {
-        this._adTimerCount--;
-        if (this._adTimerCount > 0) {
-          try {
-            await IAB.openInWebView({
-              url: url,
-              options: { showToolbar: true, toolbarPosition: 'top', closeButtonText: `Wait (${this._adTimerCount}s)` }
-            });
-          } catch(e){}
+        // Evaluate whether the user fulfilled the video length requirements
+        if (earnedRewardItem) {
+          if (onRewardEarned) onRewardEarned(earnedRewardItem);
         } else {
-          clearInterval(this._countdownInterval);
-          if (onTimerComplete) onTimerComplete();
-          try {
-            await IAB.openInWebView({
-              url: url,
-              options: { showToolbar: true, toolbarPosition: 'top', closeButtonText: '✕ Close Ad' }
-            });
-          } catch(e){}
+          if (onAdFailedOrClosed) onAdFailedOrClosed();
         }
-      }, 1000);
+      });
 
-    } catch (error) {
-      if (BrowserPlugin) { await BrowserPlugin.open({ url: url }); } 
-      else { window.open(url, '_system'); }
-      if (onClosed) onClosed();
+      // Present the cached view onto the display stack
+      await AdMob.showRewardVideoAd();
+
+    } catch(error) {
+      console.error("Failed to display native Rewarded ad item:", error);
+      this.preloadRewardedAd(); // Attempt fresh recovery
+      if (onAdFailedOrClosed) onAdFailedOrClosed();
     }
   }
 };
@@ -582,6 +517,7 @@ const AdManager = {
 window.addEventListener('DOMContentLoaded', () => {
   AdManager.initialize();
 });
+
 
 
 
