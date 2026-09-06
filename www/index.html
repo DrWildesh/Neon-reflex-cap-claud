@@ -471,7 +471,7 @@ const AdManager = {
     }
   },
 
-    async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
+      async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
     const AdMob = this._admob();
     if (!AdMob) {
       console.warn("Native framework context unavailable.");
@@ -479,29 +479,33 @@ const AdManager = {
       return;
     }
 
-    let earnedRewardItem = null;
+    // Keep strict track of execution state to prevent firing both callbacks
+    let rewardGranted = false;
 
     try {
-      // 1. FIXED: Listen for reward using the correct event name
+      // 1. REWARD LISTENER: Fire reward immediately when verified by Google SDK
       const rewardSub = await AdMob.addListener('rewardedVideoAdRewardReceived', (reward) => {
-        console.log("Reward object received from native SDK:", reward);
-        earnedRewardItem = reward; 
+        console.log("Success! Native reward event captured:", reward);
+        rewardGranted = true;
+        
+        // Clean up early if desired, or let dismiss listener handle it
+        rewardSub.remove();
+        
+        // Resume game via your callback instantly
+        if (onRewardEarned) onRewardEarned(reward);
       });
 
-      // 2. FIXED: Listen for dismiss using the correct event name
+      // 2. DISMISS LISTENER: Only handle UI closing and next-ad preloading
       const dismissSub = await AdMob.addListener('rewardedVideoAdDismissed', () => {
-        // Strip listeners immediately to avoid stacked listeners on reuse
         rewardSub.remove();
         dismissSub.remove();
         
-        // Auto-fetch next ad unit to maintain user fluid navigation
+        // Prefetch next ad asset in the background
         this.preloadRewardedAd();
 
-        // Evaluate whether the user fulfilled the video length requirements
-        if (earnedRewardItem) {
-          if (onRewardEarned) onRewardEarned(earnedRewardItem);
-        } else {
-          console.warn("Ad closed but no reward event was received.");
+        // If the ad closed and the reward listener never flipped this to true, they skipped it
+        if (!rewardGranted) {
+          console.warn("Ad closed early or dismissed without receiving the reward payload.");
           if (onAdFailedOrClosed) onAdFailedOrClosed();
         }
       });
@@ -511,10 +515,11 @@ const AdManager = {
 
     } catch(error) {
       console.error("Failed to display native Rewarded ad item:", error);
-      this.preloadRewardedAd(); // Attempt fresh recovery
+      this.preloadRewardedAd(); 
       if (onAdFailedOrClosed) onAdFailedOrClosed();
     }
   }
+
 };
 
 window.addEventListener('DOMContentLoaded', () => {
