@@ -471,7 +471,7 @@ const AdManager = {
     }
   },
 
-      async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
+        async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
     const AdMob = this._admob();
     if (!AdMob) {
       console.warn("Native framework context unavailable.");
@@ -479,47 +479,34 @@ const AdManager = {
       return;
     }
 
-    // Keep strict track of execution state to prevent firing both callbacks
-    let rewardGranted = false;
-
     try {
-      // 1. REWARD LISTENER: Fire reward immediately when verified by Google SDK
-      const rewardSub = await AdMob.addListener('rewardedVideoAdRewardReceived', (reward) => {
-        console.log("Success! Native reward event captured:", reward);
-        rewardGranted = true;
-        
-        // Clean up early if desired, or let dismiss listener handle it
-        rewardSub.remove();
-        
-        // Resume game via your callback instantly
-        if (onRewardEarned) onRewardEarned(reward);
-      });
+      console.log("Launching rewarded ad window...");
+      
+      // Modern Capacitor AdMob directly returns the reward item upon successful viewing completion
+      const rewardItem = await AdMob.showRewardVideoAd();
+      
+      // Auto-prefetch the next ad in the background while user resumes play
+      this.preloadRewardedAd();
 
-      // 2. DISMISS LISTENER: Only handle UI closing and next-ad preloading
-      const dismissSub = await AdMob.addListener('rewardedVideoAdDismissed', () => {
-        rewardSub.remove();
-        dismissSub.remove();
-        
-        // Prefetch next ad asset in the background
-        this.preloadRewardedAd();
-
-        // If the ad closed and the reward listener never flipped this to true, they skipped it
-        if (!rewardGranted) {
-          console.warn("Ad closed early or dismissed without receiving the reward payload.");
-          if (onAdFailedOrClosed) onAdFailedOrClosed();
-        }
-      });
-
-      // Present the cached view onto the display stack
-      await AdMob.showRewardVideoAd();
+      // If a valid reward item containing an amount was passed back, grant the reward
+      if (rewardItem && (rewardItem.amount > 0 || rewardItem.type)) {
+        console.log("Reward successfully verified by native return:", rewardItem);
+        if (onRewardEarned) onRewardEarned(rewardItem);
+      } else {
+        // Fallback if the object returns empty or zero-value
+        console.warn("Ad window closed or skipped without valid reward payload.");
+        if (onAdFailedOrClosed) onAdFailedOrClosed();
+      }
 
     } catch(error) {
-      console.error("Failed to display native Rewarded ad item:", error);
+      console.error("User dismissed ad early or native player crashed:", error);
+      
+      // Prefetch a fresh ad to recover for their next attempt
       this.preloadRewardedAd(); 
+      
       if (onAdFailedOrClosed) onAdFailedOrClosed();
     }
   }
-
 };
 
 window.addEventListener('DOMContentLoaded', () => {
