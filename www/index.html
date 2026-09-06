@@ -471,7 +471,7 @@ const AdManager = {
     }
   },
 
-        async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
+          async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
     const AdMob = this._admob();
     if (!AdMob) {
       console.warn("Native framework context unavailable.");
@@ -507,6 +507,7 @@ const AdManager = {
       if (onAdFailedOrClosed) onAdFailedOrClosed();
     }
   }
+
 };
 
 window.addEventListener('DOMContentLoaded', () => {
