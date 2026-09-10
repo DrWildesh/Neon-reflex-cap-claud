@@ -392,131 +392,76 @@
 // PRODUCTION ADS MODULE CONFIGURATION
 // ==========================================
 
-    const AD_STRATEGY = {
-  ADMOB_BANNER_ID: 'ca-app-pub-3940256099942544/6300978111',       
-  ADMOB_INTERSTITIAL_ID: 'ca-app-pub-3940256099942544/1033173712',
-  ADMOB_REWARDED_ID: 'ca-app-pub-3940256099942544/5224354917'     // Official Google Test Rewarded Ad ID
-};
+          const AdManager = {
+  _admob(){ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; },
 
-const AdManager = {
-  _admob() { 
-    return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; 
-  },
-
-  async initialize() {
+  async initBannerAd(){
     const AdMob = this._admob();
-    if (!AdMob) {
-      console.warn("AdMob plugin missing or not running natively.");
-      return;
-    }
-    
+    if(!AdMob) { console.log('[AdManager] No native AdMob bridge â€” browser preview mode.'); return; }
+
+    // TODO: set initializeForTesting:false once you switch to real ad unit IDs.
     try {
       await AdMob.initialize({ 
       initializeForTesting: true,
       testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
     });
-      // Auto-show standard adaptive banner
-      await AdMob.showBanner({
-        adId: AD_STRATEGY.ADMOB_BANNER_ID, 
-        adSize: 'ADAPTIVE_BANNER',
-        position: 'BOTTOM_CENTER',
-        isTesting: true 
-      });
-
-      // Background preload multi-screen ads
-      this.preloadInterstitial();
-      this.preloadRewardedAd();
-    } catch(e) { 
-      console.error("AdMob Init Failed:", e); 
-    }
+    await AdMob.showBanner({
+      adId: 'ca-app-pub-3940256099942544/6300978111', // TODO: paste your real Banner Ad Unit ID
+      adSize: 'ADAPTIVE_BANNER',
+      position: 'BOTTOM_CENTER',
+      margin: 0,
+      isTesting: true // TODO: set false for production
+    });
   },
 
-  /* --- INTERSTITIAL ADS --- */
-  async preloadInterstitial() {
+  async preloadInterstitial(){
     const AdMob = this._admob();
-    if (!AdMob) return;
+    if(!AdMob) return;
     try {
-      await AdMob.prepareInterstitial({ adId: AD_STRATEGY.ADMOB_INTERSTITIAL_ID, isTesting: true });
-    } catch(e) {}
+      await AdMob.prepareInterstitial({
+        adId: 'ca-app-pub-3940256099942544/1033173712', // TODO: paste your real Interstitial Ad Unit ID
+        isTesting: true
+      });
+    } catch(e) { console.log('[AdManager] Interstitial preload failed:', e); }
   },
 
-  async showInterstitial(onClosed) {
+  async showInterstitial(onClosed){
     const AdMob = this._admob();
-    if (!AdMob) { if (onClosed) onClosed(); return; }
+    if(!AdMob) { if(onClosed) onClosed(); return; }
     try {
       const sub = await AdMob.addListener('interstitialAdDismissed', () => {
         sub.remove();
-        this.preloadInterstitial();
-        if (onClosed) onClosed();
+        if(onClosed) onClosed();
       });
       await AdMob.showInterstitial();
     } catch(e) {
-      if (onClosed) onClosed();
+      console.log('[AdManager] Interstitial show failed:', e);
+      if(onClosed) onClosed();
     }
   },
 
-  /* --- REWARDED ADS --- */
-  async preloadRewardedAd() {
+  async showRewardedAd(onReward, onFail){
     const AdMob = this._admob();
-    if (!AdMob) return;
+    if(!AdMob) { if(onReward) onReward(); return; } // browser fallback: auto-grant so local testing still works
     try {
-      // Requests and holds a single full-screen rewarded ad unit in device memory
-      await AdMob.prepareRewardVideoAd({ 
-        adId: AD_STRATEGY.ADMOB_REWARDED_ID, 
-        isTesting: true 
+      await AdMob.prepareRewardedAd({
+        adId: 'ca-app-pub-3940256099942544/5224354917', // TODO: paste your real Rewarded Ad Unit ID
+        isTesting: true
       });
-      console.log("Rewarded ad preloaded successfully.");
+      const sub = await AdMob.addListener('rewardedVideoAdReward', () => {
+        sub.remove();
+        onReward();
+      });
+      await AdMob.showRewardedAd();
     } catch(e) {
-      console.error("Error preloading rewarded video ad:", e);
-    }
-  },
-
-          async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
-    const AdMob = this._admob();
-    if (!AdMob) {
-      console.warn("Native framework context unavailable.");
-      if (onAdFailedOrClosed) onAdFailedOrClosed();
-      return;
-    }
-
-    try {
-      console.log("Launching rewarded ad window...");
-      
-      // Modern Capacitor AdMob directly returns the reward item upon successful viewing completion
-      const rewardItem = await AdMob.showRewardVideoAd();
-      
-      // Auto-prefetch the next ad in the background while user resumes play
-      this.preloadRewardedAd();
-
-      // If a valid reward item containing an amount was passed back, grant the reward
-      if (rewardItem && (rewardItem.amount > 0 || rewardItem.type)) {
-        console.log("Reward successfully verified by native return:", rewardItem);
-        if (onRewardEarned) onRewardEarned(rewardItem);
-      } else {
-        // Fallback if the object returns empty or zero-value
-        console.warn("Ad window closed or skipped without valid reward payload.");
-        if (onAdFailedOrClosed) onAdFailedOrClosed();
-      }
-
-    } catch(error) {
-      console.error("User dismissed ad early or native player crashed:", error);
-      
-      // Prefetch a fresh ad to recover for their next attempt
-      this.preloadRewardedAd(); 
-      
-      if (onAdFailedOrClosed) onAdFailedOrClosed();
+      console.log('[AdManager] Rewarded ad failed:', e);
+      if(onFail) onFail();
     }
   }
-
 };
-
 window.addEventListener('DOMContentLoaded', () => {
   AdManager.initialize();
 });
-
-
-
-
 
   /* =====================================================================
      SOUND MANAGER — synthesized SFX + ambient background music
