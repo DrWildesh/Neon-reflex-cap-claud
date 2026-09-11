@@ -471,26 +471,62 @@ const AdManager = {
     }
   },
 
-            async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
-  const AdMob = this._admob();
-  if (!AdMob) {
-    if (onAdFailedOrClosed) onAdFailedOrClosed();
-    return;
-  }
+              async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
+    const AdMob = this._admob();
+    if (!AdMob) {
+      console.warn("Native framework context unavailable.");
+      if (onAdFailedOrClosed) onAdFailedOrClosed();
+      return;
+    }
 
-  try {
-    // If this resolves at all, the plugin's contract says the reward was earned —
-    // don't add extra validation on top of that, some test/real reward payloads
-    // legitimately come back with amount: 0 or a shape you won't have predicted.
-    const rewardItem = await AdMob.showRewardVideoAd();
-    this.preloadRewardedAd();
-    if (onRewardEarned) onRewardEarned(rewardItem || {});
-  } catch (error) {
-    // Dismissed early, failed to show, or no fill — genuinely no reward.
-    console.warn('Rewarded ad not completed:', error);
-    this.preloadRewardedAd();
-    if (onAdFailedOrClosed) onAdFailedOrClosed();
-  }
+    let rewardEarned = false;
+    let rewardData = {};
+    let eventListener = null;
+
+    try {
+      console.log("Launching rewarded ad window...");
+
+      // 1. Setup the exact event name used by the Capacitor Community 8 plugin
+      eventListener = await AdMob.addListener('onRewarded', (info) => {
+        console.log("Native AdMob event fired: Reward earned!", info);
+        rewardEarned = true;
+        rewardData = info || {};
+      });
+
+      // 2. Await the full dismissal of the native screen layout view
+      await AdMob.showRewardVideoAd();
+
+      // Give a tiny window (50ms) for native async bridge threads to switch the boolean
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // 3. Remove the listener immediately to prevent memory leaks or duplicate triggers
+      if (eventListener) {
+        eventListener.remove();
+      }
+
+      // 4. Background fetch the next ad ready to go
+      this.preloadRewardedAd();
+
+      // 5. Evaluate state to trigger structural game resume sequence
+      if (rewardEarned) {
+        if (onRewardEarned) onRewardEarned(rewardData);
+      } else {
+        console.warn("User closed ad window early without earning reward.");
+        if (onAdFailedOrClosed) onAdFailedOrClosed();
+      }
+
+    } catch (error) {
+      console.error("Ad playback crashed or failed natively:", error);
+      
+      // Cleanup safety catch
+      if (eventListener) eventListener.remove();
+      
+      this.preloadRewardedAd(); 
+      
+      // CRITICAL SAFETY FOR RESUMING: Even if the ad fails to show, 
+      // call the fail callback to prevent your game UI from getting stuck on the screen!
+      if (onAdFailedOrClosed) onAdFailedOrClosed();
+    }
   }
 
 };
