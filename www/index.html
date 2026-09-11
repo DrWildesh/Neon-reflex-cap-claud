@@ -955,17 +955,33 @@ window.addEventListener('DOMContentLoaded', () => {
   function reviveGame(){
   Sound.SFX.revive();
   Sound.Music.start();
+  
+  // 1. Reset state flags
   state.lives = 1;
   state.running = true;
   state.paused = false;
+
+  // ⚡ THE CRITICAL FIX FOR HYBRID HTML: 
+  // Remove all the old grid cell elements from the DOM so they don't instantly kill you again!
+  // Replace '.cell' or '.grid-cell' with the exact class name your app uses for active cells.
+  const activeHTMLCells = document.querySelectorAll('.cell'); 
+  activeHTMLCells.forEach(cell => {
+    // If your game keeps standard grid wrappers on screen, just clear their active status/content:
+    cell.innerHTML = ''; 
+    cell.className = 'cell'; // Reset it back to a blank base layout class
+    
+    // OR if cells are appended and deleted dynamically, un-comment this line:
+    // cell.remove();
+  });
+
+  // 2. Hide layout screens
   gameoverScreen.classList.add('hidden');
   renderLives();
+  
+  // 3. Clean start the asynchronous timer loop
   scheduleSpawn();
-
-  // ⚡ THE FIX: Restart your drawing engine ticker loop
-  // (Change 'gameLoop' to your exact animation loop function name)
-  requestAnimationFrame(gameLoop); 
 }
+
 
 
   /* =====================================================================
@@ -1063,27 +1079,24 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('revive-btn').addEventListener('click', () => {
   Sound.SFX.click();
   
-  // Hide or disable the button immediately so the player cannot double-tap it
   const reviveBtn = document.getElementById('revive-btn');
   if (reviveBtn) reviveBtn.disabled = true;
 
   AdManager.showRewardedAd(
-    // Success Path
     () => {
       if (reviveBtn) reviveBtn.disabled = false;
-      reviveGame(); 
+      reviveGame(); // Watched ad completely -> Clears grid and revives!
     },                 
-    // Failure / Closed Path
     () => {
       console.log('Ad failed/skipped, no revive granted.');
       if (reviveBtn) reviveBtn.disabled = false;
       
-      // ⚡ CRITICAL FIX: Hide the modal and trigger normal game over sequence
-      document.getElementById('continue-ad-popup').style.display = 'none'; 
-      showGameOverMenu(); // Or whatever function completely resets your UI loop!
+      // Hide the revive option so they are forced to use the "Restart" loop instead
+      reviveBtn.classList.add('hidden'); 
     }
   );
 });
+
 
 
   const muteBtn = document.getElementById('mute-btn');
