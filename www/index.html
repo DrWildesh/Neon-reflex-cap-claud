@@ -471,29 +471,60 @@ const AdManager = {
     }
   },
 
-              async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
-  const AdMob = this._admob();
-  if (!AdMob) {
-    console.warn("Native framework context unavailable.");
-    if (onAdFailedOrClosed) onAdFailedOrClosed();
-    return;
-  }
+                async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
+    const AdMob = this._admob();
+    if (!AdMob) {
+      console.warn("Native framework context unavailable.");
+      if (onAdFailedOrClosed) onAdFailedOrClosed();
+      return;
+    }
 
-  try {
-    console.log("Launching rewarded ad window...");
-    // Per the plugin's documented contract, this resolves ONLY when the
-    // user earns the reward — no event listener needed to confirm it.
-    const rewardItem = await AdMob.showRewardVideoAd();
+    // Explicit trackers for the asynchronous native lifecycle
+    let wasRewarded = false;
+    let rewardPayload = {};
+    let listeners = [];
 
+    // Create a manual promise to pause JS until the ad layout completely exits
+    await new Promise(async (resolve) => {
+      try {
+        // 1. Listen for the absolute completion reward event marker
+        const rewardSub = await AdMob.addListener('rewarded', (info) => {
+          console.log("Success: Native reward event captured!", info);
+          wasRewarded = true;
+          rewardPayload = info || {};
+        });
+        listeners.push(rewardSub);
+
+        // 2. Listen for the absolute exit window event layout marker 
+        const dismissSub = await AdMob.addListener('onRewardedVideoAdDismissed', () => {
+          console.log("Layout closed: Ad player screen dismissed.");
+          resolve();
+        });
+        listeners.push(dismissSub);
+
+        // 3. Fire the native display window layer
+        await AdMob.showRewardVideoAd();
+
+      } catch (err) {
+        console.error("Ad playback display failure:", err);
+        resolve(); // Break out safely if the canvas player crashes
+      }
+    });
+
+    // 4. Memory Cleanup: Unbind all event subscriptions instantly
+    for (const sub of listeners) {
+      if (sub && typeof sub.remove === 'function') await sub.remove();
+    }
+
+    // 5. Background fetch the next unit block
     this.preloadRewardedAd();
-    if (onRewardEarned) onRewardEarned(rewardItem || {});
 
-  } catch (error) {
-    // Dismissed early, failed to show, or no fill — genuinely no reward.
-    console.warn("Ad not completed, no reward earned:", error);
-    this.preloadRewardedAd();
-    if (onAdFailedOrClosed) onAdFailedOrClosed();
-  }
+    // 6. Route runtime to the respective outcome paths
+    if (wasRewarded) {
+      if (onRewardEarned) onRewardEarned(rewardPayload);
+    } else {
+      if (onAdFailedOrClosed) onAdFailedOrClosed();
+    }
   }
 
 };
@@ -1044,25 +1075,40 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('quit-btn').addEventListener('click', () => { Sound.SFX.click(); quitToMenu(); });
 
   document.getElementById('revive-btn').addEventListener('click', () => {
+  document.getElementById('revive-btn').addEventListener('click', () => {
   Sound.SFX.click();
   
   const reviveBtn = document.getElementById('revive-btn');
   if (reviveBtn) reviveBtn.disabled = true;
 
   AdManager.showRewardedAd(
+    // Success Path
     () => {
-      if (reviveBtn) reviveBtn.disabled = false;
-      reviveGame(); // Watched ad completely -> Clears grid and revives!
-    },                 
-    () => {
-      console.log('Ad failed/skipped, no revive granted.');
       if (reviveBtn) reviveBtn.disabled = false;
       
-      // Hide the revive option so they are forced to use the "Restart" loop instead
-      reviveBtn.classList.add('hidden'); 
+      // Clear out the stale grid cell properties from the screen 
+      // Replace '.cell' with the precise class name used by your spawned elements
+      document.querySelectorAll('.cell').forEach(c => {
+        c.innerHTML = '';
+        c.className = 'cell'; 
+      });
+
+      reviveGame(); 
+    },                 
+    // Failure / Closed Path
+    () => {
+      console.log('Ad skipped or broke.');
+      if (reviveBtn) reviveBtn.disabled = false;
+      
+      // Hide the revive popup layout instantly
+      gameoverScreen.classList.add('hidden');
+      
+      // Force return to main layout menu or normal death path
+      if (typeof showMainMenu === 'function') showMainMenu();
     }
   );
 });
+
 
 
 
