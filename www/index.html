@@ -953,15 +953,20 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function reviveGame(){
-    Sound.SFX.revive();
-    Sound.Music.start();
-    state.lives = 1;
-    state.running = true;
-    state.paused = false;
-    gameoverScreen.classList.add('hidden');
-    renderLives();
-    scheduleSpawn();
-  }
+  Sound.SFX.revive();
+  Sound.Music.start();
+  state.lives = 1;
+  state.running = true;
+  state.paused = false;
+  gameoverScreen.classList.add('hidden');
+  renderLives();
+  scheduleSpawn();
+
+  // ⚡ THE FIX: Restart your drawing engine ticker loop
+  // (Change 'gameLoop' to your exact animation loop function name)
+  requestAnimationFrame(gameLoop); 
+}
+
 
   /* =====================================================================
      RENDERING HELPERS
@@ -1056,12 +1061,30 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('quit-btn').addEventListener('click', () => { Sound.SFX.click(); quitToMenu(); });
 
   document.getElementById('revive-btn').addEventListener('click', () => {
-    Sound.SFX.click();
-    AdManager.showRewardedAd(
-      () => reviveGame(),                 // onReward
-      () => console.log('Ad failed/skipped, no revive granted.') // onFail
-    );
-  });
+  Sound.SFX.click();
+  
+  // Hide or disable the button immediately so the player cannot double-tap it
+  const reviveBtn = document.getElementById('revive-btn');
+  if (reviveBtn) reviveBtn.disabled = true;
+
+  AdManager.showRewardedAd(
+    // Success Path
+    () => {
+      if (reviveBtn) reviveBtn.disabled = false;
+      reviveGame(); 
+    },                 
+    // Failure / Closed Path
+    () => {
+      console.log('Ad failed/skipped, no revive granted.');
+      if (reviveBtn) reviveBtn.disabled = false;
+      
+      // ⚡ CRITICAL FIX: Hide the modal and trigger normal game over sequence
+      document.getElementById('continue-ad-popup').style.display = 'none'; 
+      showGameOverMenu(); // Or whatever function completely resets your UI loop!
+    }
+  );
+});
+
 
   const muteBtn = document.getElementById('mute-btn');
   function refreshMuteBtn(){
