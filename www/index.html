@@ -472,54 +472,26 @@ const AdManager = {
   },
 
             async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
-    const AdMob = this._admob();
-    if (!AdMob) {
-      console.warn("Native framework context unavailable.");
-      if (onAdFailedOrClosed) onAdFailedOrClosed();
-      return;
-    }
-
-    let rewardEarnedByEvent = false;
-    let rewardPayload = {};
-
-    try {
-      console.log("Launching rewarded ad window...");
-
-      // 1. Set up a listener for the native reward event before showing the ad
-      // This is the absolute safest way @capacitor-community/admob tracks success
-      const rewardListener = await AdMob.addListener('onRewardedVideoCompleted', (info) => {
-        rewardEarnedByEvent = true;
-        rewardPayload = info || {};
-      });
-
-      // 2. Await the ad window closing process completely
-      await AdMob.showRewardVideoAd();
-
-      // Small delay to ensure the native event listener above fires first
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      // 3. Clean up the listener so it doesn't duplicate on the next ad watch
-      rewardListener.remove();
-
-      // 4. Background prefetch the next ad unit immediately
-      this.preloadRewardedAd();
-
-      // 5. Check if user completed it successfully or closed early
-      if (rewardEarnedByEvent) {
-        console.log("Ad completed. Reward verified natively.");
-        if (onRewardEarned) onRewardEarned(rewardPayload);
-      } else {
-        console.warn("Ad window closed early by user.");
-        if (onAdFailedOrClosed) onAdFailedOrClosed();
-      }
-
-    } catch(error) {
-      console.error("Ad failed to show or crashed runtime:", error);
-      this.preloadRewardedAd(); 
-      if (onAdFailedOrClosed) onAdFailedOrClosed();
-    }
+  const AdMob = this._admob();
+  if (!AdMob) {
+    if (onAdFailedOrClosed) onAdFailedOrClosed();
+    return;
   }
 
+  try {
+    // If this resolves at all, the plugin's contract says the reward was earned —
+    // don't add extra validation on top of that, some test/real reward payloads
+    // legitimately come back with amount: 0 or a shape you won't have predicted.
+    const rewardItem = await AdMob.showRewardVideoAd();
+    this.preloadRewardedAd();
+    if (onRewardEarned) onRewardEarned(rewardItem || {});
+  } catch (error) {
+    // Dismissed early, failed to show, or no fill — genuinely no reward.
+    console.warn('Rewarded ad not completed:', error);
+    this.preloadRewardedAd();
+    if (onAdFailedOrClosed) onAdFailedOrClosed();
+  }
+  }
 
 };
 
