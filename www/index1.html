@@ -286,7 +286,6 @@
 </style>
 </head>
 <body>
-  
 <div id="app">
 
   <header class="hud">
@@ -322,7 +321,9 @@
        or AdSense for a WebView shell, inject the ad script
        here instead of this placeholder text.
        ===================================================== -->
- <main>
+  <div id="ad-banner-container">[ AdMob Banner Placeholder — 320x50 ]</div>
+
+  <main>
     <div id="grid"></div>
 
     <!-- START SCREEN -->
@@ -379,162 +380,67 @@
   'use strict';
 
   /* =====================================================================
-   ADMOB INTEGRATION LAYER â€” wired to @capacitor-community/admob
-   ---------------------------------------------------------------------
-   Capacitor auto-injects `window.Capacitor` into the WebView at runtime
-   for native builds. No <script> tag or bundler/import is needed â€” the
-   plugin is reached via `Capacitor.Plugins.AdMob`, which is why this file
-   can stay a single plain HTML file with zero build step.
-   In a plain browser tab (no native shell), `Capacitor` is undefined, so
-   every call below safely no-ops instead of throwing.
-===================================================================== */
-// ==========================================
-// PRODUCTION ADS MODULE CONFIGURATION
-// ==========================================
+     ADMOB INTEGRATION LAYER (PLACEHOLDER)
+     ---------------------------------------------------------------------
+     Drop your real AdMob logic into these functions. They are already
+     wired into the correct game events below, so once you fill them in
+     (typically by calling out to a native Android bridge injected into
+     the WebView, e.g. `window.AndroidAds`), ads will trigger automatically
+     at the right moments without touching any other game code.
+  ===================================================================== */
+  const AdManager = {
+    // Call once when the app/page loads.
+    initBannerAd(){
+      // TODO: Paste AdMob Banner init code here.
+      // Example (Android WebView JS bridge):
+      // if (window.AndroidAds) window.AndroidAds.loadBanner("ca-app-pub-XXXXXXXX/BANNER_UNIT_ID");
+      console.log('[AdManager] initBannerAd() placeholder — wire up AdMob banner here.');
+    },
 
-           const AD_STRATEGY = {
-  ADMOB_BANNER_ID: 'ca-app-pub-3940256099942544/6300978111',       
-  ADMOB_INTERSTITIAL_ID: 'ca-app-pub-3940256099942544/1033173712',
-  ADMOB_REWARDED_ID: 'ca-app-pub-3940256099942544/5224354917'     // Official Google Test Rewarded Ad ID
-};
+    // Call to preload an interstitial before you need to show it.
+    preloadInterstitial(){
+      // TODO: Paste AdMob Interstitial preload code here.
+      // Example:
+      // if (window.AndroidAds) window.AndroidAds.loadInterstitial("ca-app-pub-XXXXXXXX/INTERSTITIAL_UNIT_ID");
+      console.log('[AdManager] preloadInterstitial() placeholder.');
+    },
 
-const AdManager = {
-  _admob() { 
-    return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; 
-  },
+    // Called automatically on Game Over (every N game-overs, see GAME_OVER_AD_FREQUENCY).
+    showInterstitial(onClosed){
+      // TODO: Paste AdMob Interstitial show code here.
+      // Example:
+      // if (window.AndroidAds) {
+      //   window.AndroidAds.showInterstitial();
+      //   window.onInterstitialClosed = onClosed; // native calls this back
+      //   return;
+      // }
+      console.log('[AdManager] showInterstitial() placeholder — showing nothing, continuing immediately.');
+      if (typeof onClosed === 'function') onClosed();
+    },
 
-  async initialize() {
-    const AdMob = this._admob();
-    if (!AdMob) {
-      console.warn("AdMob plugin missing or not running natively.");
-      return;
+    // Called when player taps "Watch Ad to Continue" on Game Over.
+    showRewardedAd(onReward, onFail){
+      // TODO: Paste AdMob Rewarded Ad code here.
+      // Example:
+      // if (window.AndroidAds) {
+      //   window.AndroidAds.showRewarded();
+      //   window.onRewardedEarned = onReward;
+      //   window.onRewardedFailed = onFail;
+      //   return;
+      // }
+      console.log('[AdManager] showRewardedAd() placeholder — no ad SDK connected, simulating success.');
+      if (typeof onReward === 'function') onReward(); // remove this line once real SDK is wired up
     }
-    
-    try {
-      await AdMob.initialize({ 
-      initializeForTesting: true,
-      testingDevices: ['6efb81b2c80e414991bab0d8b480f166'] 
-    });
-      // Auto-show standard adaptive banner
-      await AdMob.showBanner({
-        adId: AD_STRATEGY.ADMOB_BANNER_ID, 
-        adSize: 'ADAPTIVE_BANNER',
-        position: 'BOTTOM_CENTER',
-        isTesting: true 
-      });
+  };
 
-      // Background preload multi-screen ads
-      this.preloadInterstitial();
-      this.preloadRewardedAd();
-    } catch(e) { 
-      console.error("AdMob Init Failed:", e); 
-    }
-  },
+  // How many game-overs between forced interstitials (typical AdMob best practice: not every single one).
+  const GAME_OVER_AD_FREQUENCY = 3;
+  let gameOverCount = 0;
 
-  /* --- INTERSTITIAL ADS --- */
-  async preloadInterstitial() {
-    const AdMob = this._admob();
-    if (!AdMob) return;
-    try {
-      await AdMob.prepareInterstitial({ adId: AD_STRATEGY.ADMOB_INTERSTITIAL_ID, isTesting: true });
-    } catch(e) {}
-  },
+  // Kick off banner + preload interstitial as soon as the game boots.
+  AdManager.initBannerAd();
+  AdManager.preloadInterstitial();
 
-  async showInterstitial(onClosed) {
-    const AdMob = this._admob();
-    if (!AdMob) { if (onClosed) onClosed(); return; }
-    try {
-      const sub = await AdMob.addListener('interstitialAdDismissed', () => {
-        sub.remove();
-        this.preloadInterstitial();
-        if (onClosed) onClosed();
-      });
-      await AdMob.showInterstitial();
-    } catch(e) {
-      if (onClosed) onClosed();
-    }
-  },
-
-  /* --- REWARDED ADS --- */
-  async preloadRewardedAd() {
-    const AdMob = this._admob();
-    if (!AdMob) return;
-    try {
-      // Requests and holds a single full-screen rewarded ad unit in device memory
-      await AdMob.prepareRewardVideoAd({ 
-        adId: AD_STRATEGY.ADMOB_REWARDED_ID, 
-        isTesting: true 
-      });
-      console.log("Rewarded ad preloaded successfully.");
-    } catch(e) {
-      console.error("Error preloading rewarded video ad:", e);
-    }
-  },
-
-            async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
-  const AdMob = this._admob();
-  if (!AdMob) {
-    console.warn("Native framework context unavailable.");
-    if (onAdFailedOrClosed) onAdFailedOrClosed();
-    return;
-  }
-
-  let wasRewarded = false;
-  let rewardPayload = {};
-  let listeners = [];
-
-  await new Promise(async (resolve) => {
-    try {
-      const rewardSub = await AdMob.addListener('rewarded', (info) => {
-        console.log("Success: Native reward event captured!", info);
-        wasRewarded = true;
-        rewardPayload = info || {};
-      });
-      listeners.push(rewardSub);
-
-      const dismissSub = await AdMob.addListener('onRewardedVideoAdDismissed', () => {
-        console.log("Layout closed: Ad player screen dismissed.");
-        resolve();
-      });
-      listeners.push(dismissSub);
-
-      await AdMob.showRewardVideoAd();
-    } catch (err) {
-      console.error("Ad playback display failure:", err);
-      resolve(); 
-    }
-  });
-
-  // Clean up native listeners
-  for (const sub of listeners) {
-    if (sub && typeof sub.remove === 'function') await sub.remove();
-  }
-
-  this.preloadRewardedAd();
-
-  // ⚡ THE CAPACITOR CRITICAL FIX: 
-  // Force the Web View viewport to recapture mouse/touch interactions
-  setTimeout(() => {
-    window.focus();
-    if(document.body) {
-      document.body.click(); // Programmatic click to force input system activation
-    }
-    
-    // Execute paths *after* hardware context returns focus
-    if (wasRewarded) {
-      if (onRewardEarned) onRewardEarned(rewardPayload);
-    } else {
-      if (onAdFailedOrClosed) onAdFailedOrClosed();
-    }
-  }, 150); 
-}
-
-
-};
-
-window.addEventListener('DOMContentLoaded', () => {
-  AdManager.initialize();
-});
 
   /* =====================================================================
      SOUND MANAGER — synthesized SFX + ambient background music
@@ -779,7 +685,6 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function scheduleSpawn(){
-    function scheduleSpawn(){
     if(!state.running || state.paused) return;
     const interval = getSpawnInterval();
     state.spawnTimer = setTimeout(() => {
@@ -810,89 +715,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const cell = freeCells[Math.floor(Math.random() * freeCells.length)];
     const idx = parseInt(cell.dataset.index);
-
-    // ⚡ FIX: Build out the visual active target container
-    cell.classList.add('target-active'); 
-    cell.innerHTML = '<div class="hit-zone"></div>'; // Or your game's asset/graphic markup
-
-    // Create an explicit object reference block to trace state lifetimes
-    const targetObject = {
-      index: idx,
-      element: cell,
-      timeoutId: null
-    };
-
-    // Store reference inside active array map
-    state.activeCells.set(idx, targetObject);
-
-    // Handle standard interaction clicks on target grid items
-    const clickHandler = (e) => {
-      e.stopPropagation();
-      // Only process active interactions
-      if (!state.running || state.paused || !state.activeCells.has(idx)) return;
-
-      Sound.SFX.hit(); // Play success feedback sound
-      state.score += 10; // Award points
-      updateScoreDisplay();
-
-      // Clear layout and data structures safely
-      clearTargetState(idx);
-    };
-
-    cell.addEventListener('click', clickHandler, { once: true });
-
-    // Handle automated lifecycles via calculated live durations
-    const duration = getLiveDuration();
-    targetObject.timeoutId = setTimeout(() => {
-      // If target is still present, the user missed it!
-      if (state.activeCells.has(idx)) {
-        clearTargetState(idx);
-        handleLifeLoss(); // Trigger life reduction, game over controls, or interstitials
-      }
-    }, duration);
-  }
-
-  // Helper Utility: Completely cleans up DOM references and timers safely
-  function clearTargetState(idx) {
-    const target = state.activeCells.get(idx);
-    if (target) {
-      if (target.timeoutId) clearTimeout(target.timeoutId);
-      target.element.className = 'cell';
-      target.element.innerHTML = '';
-      state.activeCells.delete(idx);
-    }
-  }
-
-  function handleLifeLoss() {
-    state.lives -= 1;
-    renderLives();
-    if (state.lives <= 0) {
-      triggerGameOver();
-    }
-  }
-
-  function triggerGameOver() {
-    state.running = false;
-    clearTimeout(state.spawnTimer);
-    state.activeCells.forEach(v => {
-      if(v.timeoutId) clearTimeout(v.timeoutId);
-    });
-    state.activeCells.clear();
-    
-    gameoverScreen.classList.remove('hidden');
-
-    // ⚡ Trigger standard Interstitial frequency tracking logic
-    gameOverCount += 1;
-    if (gameOverCount % GAME_OVER_AD_FREQUENCY === 0) {
-      AdManager.showInterstitial(
-        () => { AdManager.preloadInterstitial(); },
-        () => { AdManager.preloadInterstitial(); }
-      );
-    } else {
-      AdManager.preloadInterstitial();
-    }
-  }
-
 
     // Weighted random type: mostly normal, some gold, some bomb (bomb chance grows slightly with level).
     const roll = Math.random();
@@ -1027,68 +849,26 @@ window.addEventListener('DOMContentLoaded', () => {
     gameoverScreen.classList.remove('hidden');
 
     // ---- AdMob interstitial hook: shown periodically on Game Over ----
-    
-// Inside your primary loseLife/GameOver logic node:
-gameOverCount += 1; 
-
-if (gameOverCount % GAME_OVER_AD_FREQUENCY === 0) {
-  // Pass an empty execution sequence block or fallback screen progression inside
-  AdManager.showInterstitial(
-    () => {
-      console.log("Interstitial successfully shown/dismissed.");
-      AdManager.preloadInterstitial(); 
-    },
-    () => {
-      console.log("Interstitial failed to render, breaking out gracefully.");
+    gameOverCount += 1;
+    if(gameOverCount % GAME_OVER_AD_FREQUENCY === 0){
+      AdManager.showInterstitial(() => {
+        AdManager.preloadInterstitial(); // preload the next one
+      });
+    } else {
       AdManager.preloadInterstitial();
     }
-  );
-} else {
-  AdManager.preloadInterstitial();
-}
-
-
-
-  function reviveGame(){
-  Sound.SFX.revive();
-  Sound.Music.start();
-
-  // 1. Reset state flags completely
-  state.lives = 1;
-  state.running = true;
-  state.paused = false;
-
-  // ⚡ FIX ACTIVE CELL TIMEOUT LEAKS:
-  // Kill old timeouts so targets don't instantly pop up and kill you
-  if (state.activeCells) {
-    state.activeCells.forEach(v => {
-      if(v && v.timeoutId) clearTimeout(v.timeoutId);
-    });
-    state.activeCells.clear(); // Wipes the memory lookup completely clean
   }
 
-  // 2. Clear Visual DOM Grid
-  const activeHTMLCells = document.querySelectorAll('.cell');
-  activeHTMLCells.forEach(cell => {
-    cell.innerHTML = '';
-    cell.className = 'cell'; // Returns element back to blank base CSS layout
-  });
-
-  // 3. UI Layer updates
-  gameoverScreen.classList.add('hidden');
-  renderLives();
-
-  // 4. Force HTML view focus explicitly to ensure clicks work instantly
-  const gameContainer = document.getElementById('grid') || document.body;
-  gameContainer.focus();
-
-  // 5. Clean start the asynchronous timer loop
-  clearTimeout(state.spawnTimer); // Ensure no duplicate race loops exist
-  scheduleSpawn();
-}
-
-
-
+  function reviveGame(){
+    Sound.SFX.revive();
+    Sound.Music.start();
+    state.lives = 1;
+    state.running = true;
+    state.paused = false;
+    gameoverScreen.classList.add('hidden');
+    renderLives();
+    scheduleSpawn();
+  }
 
   /* =====================================================================
      RENDERING HELPERS
@@ -1183,26 +963,12 @@ if (gameOverCount % GAME_OVER_AD_FREQUENCY === 0) {
   document.getElementById('quit-btn').addEventListener('click', () => { Sound.SFX.click(); quitToMenu(); });
 
   document.getElementById('revive-btn').addEventListener('click', () => {
-  Sound.SFX.click();
-  const reviveBtn = document.getElementById('revive-btn');
-  if (reviveBtn) reviveBtn.disabled = true;
-
-  AdManager.showRewardedAd(
-    // Success Path
-    () => {
-      if (reviveBtn) reviveBtn.disabled = false;
-      reviveGame(); // Contains the accurate data clean up routine
-    },
-    // Failure / Closed Path
-    () => {
-      console.log('Ad skipped or broke.');
-      if (reviveBtn) reviveBtn.disabled = false;
-      gameoverScreen.classList.add('hidden');
-      if (typeof quitToMenu === 'function') quitToMenu();
-    }
-  );
-});
-
+    Sound.SFX.click();
+    AdManager.showRewardedAd(
+      () => reviveGame(),                 // onReward
+      () => console.log('Ad failed/skipped, no revive granted.') // onFail
+    );
+  });
 
   const muteBtn = document.getElementById('mute-btn');
   function refreshMuteBtn(){
@@ -1219,7 +985,4 @@ if (gameOverCount % GAME_OVER_AD_FREQUENCY === 0) {
   refreshMuteBtn();
 
 })();
-</script>
-  
-</body>
-</html>
+</scripl
