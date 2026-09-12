@@ -468,7 +468,7 @@ const AdManager = {
     }
   },
 
-          async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
+  async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
     const AdMob = this._admob();
     if (!AdMob) {
       console.warn("Native framework context unavailable.");
@@ -686,6 +686,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const GRID_SIZE = 16; // 4x4
   const STORAGE_KEY = 'neonReflex_highScore';
   const START_LIVES = 3;
+  const GAME_OVER_AD_FREQUENCY = 2; // Show interstitial every 2nd game over
 
   const grid = document.getElementById('grid');
   const scoreVal = document.getElementById('score-val');
@@ -701,6 +702,14 @@ window.addEventListener('DOMContentLoaded', () => {
   const newHighBadge = document.getElementById('new-high-badge');
   const startHighEl = document.getElementById('start-high');
 
+  const startBtn = document.getElementById('start-btn');
+  const restartBtn = document.getElementById('restart-btn');
+  const reviveBtn = document.getElementById('revive-btn');
+  const pauseBtn = document.getElementById('pause-btn');
+  const resumeBtn = document.getElementById('resume-btn');
+  const quitBtn = document.getElementById('quit-btn');
+  const muteBtn = document.getElementById('mute-btn');
+
   let state = {
     score: 0,
     highScore: parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10),
@@ -713,6 +722,8 @@ window.addEventListener('DOMContentLoaded', () => {
     activeCells: new Map(), // index -> {type, timeoutId}
     correctInLevel: 0
   };
+
+  let gameOverCount = 0;
 
   // Build the grid cells once.
   for(let i=0;i<GRID_SIZE;i++){
@@ -1004,8 +1015,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function resumeGame(){
     state.paused = false;
-    pauseScreen.classList.add('hidden');
     Sound.Music.unduck();
+    pauseScreen.classList.add('hidden');
     scheduleSpawn();
   }
 
@@ -1015,7 +1026,6 @@ window.addEventListener('DOMContentLoaded', () => {
     clearTimeout(state.spawnTimer);
     state.activeCells.forEach(v => clearTimeout(v.timeoutId));
     state.activeCells.clear();
-    clearAllCells();
     Sound.Music.stop();
     pauseScreen.classList.add('hidden');
     gameoverScreen.classList.add('hidden');
@@ -1023,35 +1033,35 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   /* =====================================================================
-     EVENT WIRING
+     EVENT LISTENERS
   ===================================================================== */
-  document.getElementById('start-btn').addEventListener('click', () => { Sound.SFX.click(); startGame(); });
-  document.getElementById('restart-btn').addEventListener('click', () => { Sound.SFX.click(); startGame(); });
-  document.getElementById('pause-btn').addEventListener('click', () => { Sound.SFX.click(); pauseGame(); });
-  document.getElementById('resume-btn').addEventListener('click', () => { Sound.SFX.click(); resumeGame(); });
-  document.getElementById('quit-btn').addEventListener('click', () => { Sound.SFX.click(); quitToMenu(); });
-
-  document.getElementById('revive-btn').addEventListener('click', () => {
-    Sound.SFX.click();
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', startGame);
+  pauseBtn.addEventListener('click', pauseGame);
+  resumeBtn.addEventListener('click', resumeGame);
+  quitBtn.addEventListener('click', quitToMenu);
+  
+  // Revive button: show rewarded ad, and on success, revive the game
+  reviveBtn.addEventListener('click', () => {
+    console.log("Revive button clicked. Triggering rewarded ad...");
     AdManager.showRewardedAd(
-      () => reviveGame(),                 // onReward
-      () => console.log('Ad failed/skipped, no revive granted.') // onFail
+      // onRewardEarned callback
+      (rewardItem) => {
+        console.log("Reward earned! Revoking game...", rewardItem);
+        reviveGame();
+      },
+      // onAdFailedOrClosed callback
+      () => {
+        console.log("Ad failed or was closed. Player not revived.");
+        // Player stays on game over screen
+      }
     );
   });
 
-  const muteBtn = document.getElementById('mute-btn');
-  function refreshMuteBtn(){
-    const isMuted = Sound.isMuted();
-    muteBtn.textContent = isMuted ? '🔇' : '🔊';
-    muteBtn.classList.toggle('muted', isMuted);
-  }
   muteBtn.addEventListener('click', () => {
-    Sound.unlock();
-    Sound.toggleMute();
-    refreshMuteBtn();
-    if(!Sound.isMuted()) Sound.SFX.click();
+    const isMuted = Sound.toggleMute();
+    muteBtn.classList.toggle('muted', isMuted);
   });
-  refreshMuteBtn();
 
 })();
 </script>
