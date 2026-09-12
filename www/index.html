@@ -485,56 +485,50 @@ const AdManager = {
 
   await new Promise(async (resolve) => {
     try {
-      // 1. Standard Community Reward Listener
       const rewardSub = await AdMob.addListener('rewarded', (info) => {
-        console.log("Success: Reward earned!", info);
+        console.log("Success: Native reward event captured!", info);
         wasRewarded = true;
         rewardPayload = info || {};
       });
       listeners.push(rewardSub);
 
-      // FIX: Cover both potential community event naming conventions for dismissal
-      const handleDismiss = () => {
-        console.log("Ad screen dismissed completely.");
+      const dismissSub = await AdMob.addListener('onRewardedVideoAdDismissed', () => {
+        console.log("Layout closed: Ad player screen dismissed.");
         resolve();
-      };
-
-      const dismissSub = await AdMob.addListener('onRewardedVideoAdDismissed', handleDismiss);
+      });
       listeners.push(dismissSub);
-      
-      // Fallback hook for variant community plugin specifications
-      const dismissSubAlt = await AdMob.addListener('rewardedVideoDismissed', handleDismiss);
-      listeners.push(dismissSubAlt);
 
       await AdMob.showRewardVideoAd();
-
     } catch (err) {
       console.error("Ad playback display failure:", err);
       resolve(); 
     }
   });
 
-  // 2. Unbind Listeners
+  // Clean up native listeners
   for (const sub of listeners) {
     if (sub && typeof sub.remove === 'function') await sub.remove();
   }
 
-  // ⚡ CRITICAL WEBVIEW FIX: Force focus and redraw execution layout
-  window.focus();
-  document.body.focus();
-  setTimeout(() => {
-    window.dispatchEvent(new Event('resize')); // Forces hybrid canvas viewport redraw
-  }, 100);
-
   this.preloadRewardedAd();
 
-  // 3. Fire callbacks safely out of the promise loop
-  if (wasRewarded) {
-    if (onRewardEarned) onRewardEarned(rewardPayload);
-  } else {
-    if (onAdFailedOrClosed) onAdFailedOrClosed();
-  }
+  // ⚡ THE CAPACITOR CRITICAL FIX: 
+  // Force the Web View viewport to recapture mouse/touch interactions
+  setTimeout(() => {
+    window.focus();
+    if(document.body) {
+      document.body.click(); // Programmatic click to force input system activation
+    }
+    
+    // Execute paths *after* hardware context returns focus
+    if (wasRewarded) {
+      if (onRewardEarned) onRewardEarned(rewardPayload);
+    } else {
+      if (onAdFailedOrClosed) onAdFailedOrClosed();
+    }
+  }, 150); 
 }
+
 
 };
 
@@ -785,6 +779,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function scheduleSpawn(){
+    function scheduleSpawn(){
     if(!state.running || state.paused) return;
     const interval = getSpawnInterval();
     state.spawnTimer = setTimeout(() => {
@@ -815,6 +810,89 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const cell = freeCells[Math.floor(Math.random() * freeCells.length)];
     const idx = parseInt(cell.dataset.index);
+
+    // ⚡ FIX: Build out the visual active target container
+    cell.classList.add('target-active'); 
+    cell.innerHTML = '<div class="hit-zone"></div>'; // Or your game's asset/graphic markup
+
+    // Create an explicit object reference block to trace state lifetimes
+    const targetObject = {
+      index: idx,
+      element: cell,
+      timeoutId: null
+    };
+
+    // Store reference inside active array map
+    state.activeCells.set(idx, targetObject);
+
+    // Handle standard interaction clicks on target grid items
+    const clickHandler = (e) => {
+      e.stopPropagation();
+      // Only process active interactions
+      if (!state.running || state.paused || !state.activeCells.has(idx)) return;
+
+      Sound.SFX.hit(); // Play success feedback sound
+      state.score += 10; // Award points
+      updateScoreDisplay();
+
+      // Clear layout and data structures safely
+      clearTargetState(idx);
+    };
+
+    cell.addEventListener('click', clickHandler, { once: true });
+
+    // Handle automated lifecycles via calculated live durations
+    const duration = getLiveDuration();
+    targetObject.timeoutId = setTimeout(() => {
+      // If target is still present, the user missed it!
+      if (state.activeCells.has(idx)) {
+        clearTargetState(idx);
+        handleLifeLoss(); // Trigger life reduction, game over controls, or interstitials
+      }
+    }, duration);
+  }
+
+  // Helper Utility: Completely cleans up DOM references and timers safely
+  function clearTargetState(idx) {
+    const target = state.activeCells.get(idx);
+    if (target) {
+      if (target.timeoutId) clearTimeout(target.timeoutId);
+      target.element.className = 'cell';
+      target.element.innerHTML = '';
+      state.activeCells.delete(idx);
+    }
+  }
+
+  function handleLifeLoss() {
+    state.lives -= 1;
+    renderLives();
+    if (state.lives <= 0) {
+      triggerGameOver();
+    }
+  }
+
+  function triggerGameOver() {
+    state.running = false;
+    clearTimeout(state.spawnTimer);
+    state.activeCells.forEach(v => {
+      if(v.timeoutId) clearTimeout(v.timeoutId);
+    });
+    state.activeCells.clear();
+    
+    gameoverScreen.classList.remove('hidden');
+
+    // ⚡ Trigger standard Interstitial frequency tracking logic
+    gameOverCount += 1;
+    if (gameOverCount % GAME_OVER_AD_FREQUENCY === 0) {
+      AdManager.showInterstitial(
+        () => { AdManager.preloadInterstitial(); },
+        () => { AdManager.preloadInterstitial(); }
+      );
+    } else {
+      AdManager.preloadInterstitial();
+    }
+  }
+
 
     // Weighted random type: mostly normal, some gold, some bomb (bomb chance grows slightly with level).
     const roll = Math.random();
@@ -949,64 +1027,66 @@ window.addEventListener('DOMContentLoaded', () => {
     gameoverScreen.classList.remove('hidden');
 
     // ---- AdMob interstitial hook: shown periodically on Game Over ----
-    // Ensure these variables are declared in global scope or fully shared state
-let gameOverCount = 0; 
-const GAME_OVER_AD_FREQUENCY = 3; // Change to your preferred rate
-
-function handleGameOverAds() {
-  gameOverCount += 1;
-  console.log(`Game Over Count: ${gameOverCount}`); // Tracking verification
-
-  if (gameOverCount % GAME_OVER_AD_FREQUENCY === 0) {
-    console.log("Attempting to trigger Interstitial...");
     
-    // Call your manager wrapper safely
-    AdManager.showInterstitial(
-      // Ad successfully shown/closed path
-      () => {
-        window.focus(); // Keep webview active
-        AdManager.preloadInterstitial(); 
-      },
-      // Ad failed to show path
-      () => {
-        AdManager.preloadInterstitial();
-      }
-    );
-  } else {
-    AdManager.preloadInterstitial();
-  }
+// Inside your primary loseLife/GameOver logic node:
+gameOverCount += 1; 
+
+if (gameOverCount % GAME_OVER_AD_FREQUENCY === 0) {
+  // Pass an empty execution sequence block or fallback screen progression inside
+  AdManager.showInterstitial(
+    () => {
+      console.log("Interstitial successfully shown/dismissed.");
+      AdManager.preloadInterstitial(); 
+    },
+    () => {
+      console.log("Interstitial failed to render, breaking out gracefully.");
+      AdManager.preloadInterstitial();
+    }
+  );
+} else {
+  AdManager.preloadInterstitial();
 }
+
 
 
   function reviveGame(){
   Sound.SFX.revive();
   Sound.Music.start();
-  
-  // 1. Reset state flags
+
+  // 1. Reset state flags completely
   state.lives = 1;
   state.running = true;
   state.paused = false;
 
-  // ⚡ THE CRITICAL FIX FOR HYBRID HTML: 
-  // Remove all the old grid cell elements from the DOM so they don't instantly kill you again!
-  // Replace '.cell' or '.grid-cell' with the exact class name your app uses for active cells.
-  const activeHTMLCells = document.querySelectorAll('.cell'); 
+  // ⚡ FIX ACTIVE CELL TIMEOUT LEAKS:
+  // Kill old timeouts so targets don't instantly pop up and kill you
+  if (state.activeCells) {
+    state.activeCells.forEach(v => {
+      if(v && v.timeoutId) clearTimeout(v.timeoutId);
+    });
+    state.activeCells.clear(); // Wipes the memory lookup completely clean
+  }
+
+  // 2. Clear Visual DOM Grid
+  const activeHTMLCells = document.querySelectorAll('.cell');
   activeHTMLCells.forEach(cell => {
-    // If your game keeps standard grid wrappers on screen, just clear their active status/content:
-    cell.innerHTML = ''; 
-    cell.className = 'cell'; // Reset it back to a blank base layout class
-    
-    // OR if cells are appended and deleted dynamically, un-comment this line:
-    // cell.remove();
+    cell.innerHTML = '';
+    cell.className = 'cell'; // Returns element back to blank base CSS layout
   });
 
-  // 2. Hide layout screens
+  // 3. UI Layer updates
   gameoverScreen.classList.add('hidden');
   renderLives();
-  
-  // 3. Clean start the asynchronous timer loop
+
+  // 4. Force HTML view focus explicitly to ensure clicks work instantly
+  const gameContainer = document.getElementById('grid') || document.body;
+  gameContainer.focus();
+
+  // 5. Clean start the asynchronous timer loop
+  clearTimeout(state.spawnTimer); // Ensure no duplicate race loops exist
   scheduleSpawn();
 }
+
 
 
 
@@ -1104,7 +1184,6 @@ function handleGameOverAds() {
 
   document.getElementById('revive-btn').addEventListener('click', () => {
   Sound.SFX.click();
-  
   const reviveBtn = document.getElementById('revive-btn');
   if (reviveBtn) reviveBtn.disabled = true;
 
@@ -1112,29 +1191,18 @@ function handleGameOverAds() {
     // Success Path
     () => {
       if (reviveBtn) reviveBtn.disabled = false;
-      
-      // Clear out the stale grid cell properties from the screen 
-      // Replace '.cell' with the precise class name used by your spawned elements
-      document.querySelectorAll('.cell').forEach(c => {
-        c.innerHTML = '';
-        c.className = 'cell'; 
-      });
-
-      reviveGame(); 
-    },                 
+      reviveGame(); // Contains the accurate data clean up routine
+    },
     // Failure / Closed Path
     () => {
       console.log('Ad skipped or broke.');
       if (reviveBtn) reviveBtn.disabled = false;
-      
-      // Hide the revive popup layout instantly
       gameoverScreen.classList.add('hidden');
-      
-      // Force return to main layout menu or normal death path
-      if (typeof showMainMenu === 'function') showMainMenu();
+      if (typeof quitToMenu === 'function') quitToMenu();
     }
   );
 });
+
 
   const muteBtn = document.getElementById('mute-btn');
   function refreshMuteBtn(){
