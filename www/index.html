@@ -471,62 +471,70 @@ const AdManager = {
     }
   },
 
-                   async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
-    const AdMob = this._admob();
-    if (!AdMob) {
-      console.warn("Native framework context unavailable.");
-      if (onAdFailedOrClosed) onAdFailedOrClosed();
-      return;
-    }
-
-    // Explicit trackers for the asynchronous native lifecycle
-    let wasRewarded = false;
-    let rewardPayload = {};
-    let listeners = [];
-
-    // Create a manual promise to pause JS until the ad layout completely exits
-    await new Promise(async (resolve) => {
-      try {
-        // 1. Listen for the absolute completion reward event marker
-        const rewardSub = await AdMob.addListener('rewarded', (info) => {
-          console.log("Success: Native reward event captured!", info);
-          wasRewarded = true;
-          rewardPayload = info || {};
-        });
-        listeners.push(rewardSub);
-
-        // 2. Listen for the absolute exit window event layout marker 
-        const dismissSub = await AdMob.addListener('onRewardedVideoAdDismissed', () => {
-          console.log("Layout closed: Ad player screen dismissed.");
-          resolve();
-        });
-        listeners.push(dismissSub);
-
-        // 3. Fire the native display window layer
-        await AdMob.showRewardVideoAd();
-
-      } catch (err) {
-        console.error("Ad playback display failure:", err);
-        resolve(); // Break out safely if the canvas player crashes
-      }
-    });
-
-    // 4. Memory Cleanup: Unbind all event subscriptions instantly
-    for (const sub of listeners) {
-      if (sub && typeof sub.remove === 'function') await sub.remove();
-    }
-
-    // 5. Background fetch the next unit block
-    this.preloadRewardedAd();
-
-    // 6. Route runtime to the respective outcome paths
-    if (wasRewarded) {
-      if (onRewardEarned) onRewardEarned(rewardPayload);
-    } else {
-      if (onAdFailedOrClosed) onAdFailedOrClosed();
-    }
+            async showRewardedAd(onRewardEarned, onAdFailedOrClosed) {
+  const AdMob = this._admob();
+  if (!AdMob) {
+    console.warn("Native framework context unavailable.");
+    if (onAdFailedOrClosed) onAdFailedOrClosed();
+    return;
   }
 
+  let wasRewarded = false;
+  let rewardPayload = {};
+  let listeners = [];
+
+  await new Promise(async (resolve) => {
+    try {
+      // 1. Standard Community Reward Listener
+      const rewardSub = await AdMob.addListener('rewarded', (info) => {
+        console.log("Success: Reward earned!", info);
+        wasRewarded = true;
+        rewardPayload = info || {};
+      });
+      listeners.push(rewardSub);
+
+      // FIX: Cover both potential community event naming conventions for dismissal
+      const handleDismiss = () => {
+        console.log("Ad screen dismissed completely.");
+        resolve();
+      };
+
+      const dismissSub = await AdMob.addListener('onRewardedVideoAdDismissed', handleDismiss);
+      listeners.push(dismissSub);
+      
+      // Fallback hook for variant community plugin specifications
+      const dismissSubAlt = await AdMob.addListener('rewardedVideoDismissed', handleDismiss);
+      listeners.push(dismissSubAlt);
+
+      await AdMob.showRewardVideoAd();
+
+    } catch (err) {
+      console.error("Ad playback display failure:", err);
+      resolve(); 
+    }
+  });
+
+  // 2. Unbind Listeners
+  for (const sub of listeners) {
+    if (sub && typeof sub.remove === 'function') await sub.remove();
+  }
+
+  // ⚡ CRITICAL WEBVIEW FIX: Force focus and redraw execution layout
+  window.focus();
+  document.body.focus();
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize')); // Forces hybrid canvas viewport redraw
+  }, 100);
+
+  this.preloadRewardedAd();
+
+  // 3. Fire callbacks safely out of the promise loop
+  if (wasRewarded) {
+    if (onRewardEarned) onRewardEarned(rewardPayload);
+  } else {
+    if (onAdFailedOrClosed) onAdFailedOrClosed();
+  }
+}
 
 };
 
@@ -941,15 +949,34 @@ window.addEventListener('DOMContentLoaded', () => {
     gameoverScreen.classList.remove('hidden');
 
     // ---- AdMob interstitial hook: shown periodically on Game Over ----
-    gameOverCount += 1;
-    if(gameOverCount % GAME_OVER_AD_FREQUENCY === 0){
-      AdManager.showInterstitial(() => {
-        AdManager.preloadInterstitial(); // preload the next one
-      });
-    } else {
-      AdManager.preloadInterstitial();
-    }
+    // Ensure these variables are declared in global scope or fully shared state
+let gameOverCount = 0; 
+const GAME_OVER_AD_FREQUENCY = 3; // Change to your preferred rate
+
+function handleGameOverAds() {
+  gameOverCount += 1;
+  console.log(`Game Over Count: ${gameOverCount}`); // Tracking verification
+
+  if (gameOverCount % GAME_OVER_AD_FREQUENCY === 0) {
+    console.log("Attempting to trigger Interstitial...");
+    
+    // Call your manager wrapper safely
+    AdManager.showInterstitial(
+      // Ad successfully shown/closed path
+      () => {
+        window.focus(); // Keep webview active
+        AdManager.preloadInterstitial(); 
+      },
+      // Ad failed to show path
+      () => {
+        AdManager.preloadInterstitial();
+      }
+    );
+  } else {
+    AdManager.preloadInterstitial();
   }
+}
+
 
   function reviveGame(){
   Sound.SFX.revive();
